@@ -16,7 +16,7 @@ export class CellHighlighter implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = []
   private readonly cache = new Map<string, CachedCells>()
 
-  private readonly codeDecoration = vscode.window.createTextEditorDecorationType({
+  private readonly currentCellDecoration = vscode.window.createTextEditorDecorationType({
     backgroundColor: new vscode.ThemeColor('editor.rangeHighlightBackground'),
     isWholeLine: true,
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
@@ -66,7 +66,7 @@ export class CellHighlighter implements vscode.Disposable {
   dispose() {
     this.cache.clear()
     this.disposables.forEach((disposable) => disposable.dispose())
-    this.codeDecoration.dispose()
+    this.currentCellDecoration.dispose()
     this.topDecoration.dispose()
     this.bottomDecoration.dispose()
   }
@@ -99,16 +99,22 @@ export class CellHighlighter implements vscode.Disposable {
       return
     }
 
-    editor.setDecorations(this.topDecoration, [this.boundaryRange(editor.document, cell.cellRange.start)])
-    editor.setDecorations(this.bottomDecoration, [this.boundaryRange(editor.document, this.lastOffsetInside(cell.cellRange))])
     editor.setDecorations(
-      this.codeDecoration,
-      cell.codeRange ? [this.wholeLineOffsetRangeToRange(editor.document, cell.codeRange)] : []
+      this.topDecoration,
+      docCells.cells.map((docCell) => this.boundaryRange(editor.document, docCell.cellRange.start))
+    )
+    editor.setDecorations(
+      this.bottomDecoration,
+      docCells.cells.map((docCell) => this.boundaryRange(editor.document, this.lastOffsetInside(docCell.cellRange)))
+    )
+    editor.setDecorations(
+      this.currentCellDecoration,
+      [this.wholeLineOffsetRangeToRange(editor.document, cell.cellRange)]
     )
   }
 
   private clearEditor(editor: vscode.TextEditor) {
-    editor.setDecorations(this.codeDecoration, [])
+    editor.setDecorations(this.currentCellDecoration, [])
     editor.setDecorations(this.topDecoration, [])
     editor.setDecorations(this.bottomDecoration, [])
   }
