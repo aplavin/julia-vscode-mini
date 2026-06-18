@@ -3,7 +3,7 @@
 Julia support for VS Code:
 
 - Julia syntax highlighting for `.jl` files
-- command-started Julia REPLs
+- open-or-create and fresh-start Julia REPL commands
 - source-aware editor-to-REPL execute commands
 - code-cell frames and current-cell highlighting for `.jl` files with explicit cell delimiters
 - `@profview`, `view_profile`, `@profview_allocs`, and `view_profile_allocs`

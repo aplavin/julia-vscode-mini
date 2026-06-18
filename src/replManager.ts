@@ -65,17 +65,17 @@ export class ReplManager implements vscode.Disposable {
     this.output.dispose()
   }
 
-  async startRepl() {
+  async openRepl() {
     const existing = this.getActiveSession() ?? this.sessions.at(-1)
     if (existing) {
       this.activeSessionId = existing.id
       existing.terminal.show(false)
       return existing
     }
-    return this.startNewRepl()
+    return this.startRepl()
   }
 
-  async startNewRepl() {
+  async startRepl() {
     const id = crypto.randomUUID()
     const name = `Julia REPL ${this.sessions.length + 1}`
     const pipeName = generatePipeName(id)

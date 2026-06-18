@@ -15,8 +15,8 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onLanguage:julia",
+    "onCommand:julia.openRepl",
     "onCommand:julia.startRepl",
-    "onCommand:julia.startNewRepl",
     "onCommand:julia.setActiveRepl",
     "onCommand:language-julia.executeCodeBlockOrSelection",
     "onCommand:language-julia.executeCodeBlockOrSelectionAndMove",
@@ -73,12 +73,12 @@
     ],
     "commands": [
       {
-        "command": "julia.startRepl",
-        "title": "Julia: Start REPL"
+        "command": "julia.openRepl",
+        "title": "Julia: Open REPL"
       },
       {
-        "command": "julia.startNewRepl",
-        "title": "Julia: Start New REPL"
+        "command": "julia.startRepl",
+        "title": "Julia: Start REPL"
       },
       {
         "command": "julia.setActiveRepl",
