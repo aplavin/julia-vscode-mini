@@ -1,12 +1,15 @@
 import * as vscode from 'vscode'
+import { CellHighlighter } from './cellHighlighter'
 import { ProfilerPanel } from './profilerPanel'
 import { ReplManager } from './replManager'
 
 export function activate(context: vscode.ExtensionContext) {
+  const cellHighlighter = new CellHighlighter()
   const profiler = new ProfilerPanel(context)
   const repls = new ReplManager(context, profiler)
 
   context.subscriptions.push(
+    cellHighlighter,
     profiler,
     repls,
     vscode.commands.registerCommand('julia.startRepl', () => repls.startRepl()),

@@ -44,6 +44,7 @@ test('parses Julia cells with upstream delimiter defaults', () => {
 
   const current = findCellAtOffset(cells, text.indexOf('b = 2'))
   assert.equal(current.id, 1)
+  assert.equal(findCellAtOffset(cells, text.indexOf('# %%')).id, 2)
   assert.equal(nextCellWithCode(cells, current).id, 2)
 })
 

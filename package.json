@@ -14,6 +14,7 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
+    "onLanguage:julia",
     "onCommand:julia.startRepl",
     "onCommand:julia.startNewRepl",
     "onCommand:julia.setActiveRepl",
