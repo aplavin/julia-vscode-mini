@@ -103,7 +103,7 @@ export class CellHighlighter implements vscode.Disposable {
     editor.setDecorations(this.bottomDecoration, [this.boundaryRange(editor.document, this.lastOffsetInside(cell.cellRange))])
     editor.setDecorations(
       this.codeDecoration,
-      cell.codeRange ? [this.offsetRangeToRange(editor.document, cell.codeRange)] : []
+      cell.codeRange ? [this.wholeLineOffsetRangeToRange(editor.document, cell.codeRange)] : []
     )
   }
 
@@ -130,8 +130,8 @@ export class CellHighlighter implements vscode.Disposable {
     return cachedCells
   }
 
-  private offsetRangeToRange(document: vscode.TextDocument, range: OffsetRange) {
-    return new vscode.Range(document.positionAt(range.start), document.positionAt(range.end))
+  private wholeLineOffsetRangeToRange(document: vscode.TextDocument, range: OffsetRange) {
+    return new vscode.Range(document.positionAt(range.start), document.positionAt(this.lastOffsetInside(range)))
   }
 
   private boundaryRange(document: vscode.TextDocument, offset: number) {
