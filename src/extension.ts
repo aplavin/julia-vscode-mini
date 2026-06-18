@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import { CellHighlighter } from './cellHighlighter'
 import { ProfilerPanel } from './profilerPanel'
 import { ReplManager } from './replManager'
+import { registerUnicodeCompletionProvider } from './unicodeCompletionProvider'
 
 export function activate(context: vscode.ExtensionContext) {
   const cellHighlighter = new CellHighlighter()
@@ -12,6 +13,7 @@ export function activate(context: vscode.ExtensionContext) {
     cellHighlighter,
     profiler,
     repls,
+    registerUnicodeCompletionProvider(),
     vscode.commands.registerCommand('julia.openRepl', () => repls.openRepl()),
     vscode.commands.registerCommand('julia.startRepl', () => repls.startRepl()),
     vscode.commands.registerCommand('language-julia.executeCodeBlockOrSelection', () => repls.executeCodeInRepl()),

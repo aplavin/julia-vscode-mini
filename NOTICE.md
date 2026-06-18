@@ -13,3 +13,6 @@ by `julia-vscode/julia-vscode`.
 
 The Julia profiler tree-building logic in `julia/julia_runtime.jl` is adapted
 from `ProfileCanvas.jl` and `julia-vscode/julia-vscode`.
+
+The generated Unicode completion table in `src/unicodeCompletions.generated.ts`
+is derived from `REPL.REPLCompletions` in `JuliaLang/julia`, MIT license.

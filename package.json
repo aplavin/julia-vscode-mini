@@ -182,6 +182,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
+    "generate-unicode-completions": "julia --startup-file=no scripts/generate_unicode_completions.jl",
     "compile": "tsc -p ./",
     "watch": "tsc -w -p ./",
     "test": "npm run compile && node --test test/*.test.js",

@@ -6,6 +6,7 @@ Julia support for VS Code:
 - open-or-create and fresh-start Julia REPL commands
 - source-aware execute commands that use the active Julia REPL terminal or create a fresh one
 - code-cell frames and current-cell highlighting for `.jl` files with explicit cell delimiters
+- Julia unicode completions like `\alpha` and `\:smile:`
 - `@profview`, `view_profile`, `@profview_allocs`, and `view_profile_allocs`
 - VS Code profiler panel with source navigation and editor heat decorations
 
