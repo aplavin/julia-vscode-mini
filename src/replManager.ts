@@ -1,6 +1,7 @@
 import * as crypto from 'crypto'
 import * as fs from 'fs'
 import * as net from 'net'
+import * as path from 'path'
 import * as vscode from 'vscode'
 import {
   buildEvalCommand,
@@ -63,7 +64,7 @@ export class ReplManager implements vscode.Disposable {
     return this.startRepl()
   }
 
-  async startRepl(preserveFocus = false) {
+  async startRepl(preserveFocus = false, cwd: string | vscode.Uri | undefined = workspaceCwd()) {
     const id = crypto.randomUUID()
     const name = `Julia REPL ${this.sessions.length + 1}`
     const pipeName = generatePipeName(id)
@@ -98,7 +99,7 @@ export class ReplManager implements vscode.Disposable {
       name,
       shellPath: executablePath,
       shellArgs,
-      cwd: workspaceCwd(),
+      cwd,
       isTransient: true,
     })
 
@@ -165,20 +166,27 @@ export class ReplManager implements vscode.Disposable {
       vscode.window.showWarningMessage('No active editor.')
       return
     }
-    await this.executeText(editor.document.getText(), editor.document.fileName, 0, 0, false)
+    await this.executeText(editor.document.getText(), editor.document.fileName, editor.document.uri, 0, 0, false)
   }
 
   private async executeRange(editor: vscode.TextEditor, range: vscode.Range, softscope: boolean) {
     const code = editor.document.getText(range)
-    await this.executeText(code, editor.document.fileName, range.start.line, range.start.character, softscope)
+    await this.executeText(code, editor.document.fileName, editor.document.uri, range.start.line, range.start.character, softscope)
   }
 
   private async executeOffsetRange(editor: vscode.TextEditor, range: OffsetRange, softscope: boolean) {
     await this.executeRange(editor, this.vscodeRangeFromOffsetRange(editor.document, range), softscope)
   }
 
-  private async executeText(code: string, filename: string, line: number, column: number, softscope: boolean) {
-    const session = this.getActiveTerminalSession() ?? await this.startRepl(true)
+  private async executeText(
+    code: string,
+    filename: string,
+    uri: vscode.Uri,
+    line: number,
+    column: number,
+    softscope: boolean
+  ) {
+    const session = this.getActiveTerminalSession() ?? await this.startRepl(true, this.cwdForExecutedFile(uri))
     if (!session) {
       vscode.window.showWarningMessage('Start a Julia REPL first.')
       return
@@ -225,6 +233,13 @@ export class ReplManager implements vscode.Disposable {
 
   private getActiveTerminalSession() {
     return this.sessions.find((session) => session.terminal === vscode.window.activeTerminal)
+  }
+
+  private cwdForExecutedFile(uri: vscode.Uri) {
+    if (uri.scheme !== 'file') {
+      return workspaceCwd()
+    }
+    return path.dirname(uri.fsPath)
   }
 
   private listen(server: net.Server, pipeName: string) {
