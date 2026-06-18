@@ -17,9 +17,11 @@
     "onCommand:julia.startRepl",
     "onCommand:julia.startNewRepl",
     "onCommand:julia.setActiveRepl",
-    "onCommand:julia.sendSelectionToRepl",
-    "onCommand:julia.sendLineToRepl",
-    "onCommand:julia.sendFileToRepl",
+    "onCommand:language-julia.executeCodeBlockOrSelection",
+    "onCommand:language-julia.executeCodeBlockOrSelectionAndMove",
+    "onCommand:language-julia.executeCell",
+    "onCommand:language-julia.executeCellAndMove",
+    "onCommand:language-julia.executeFile",
     "onCommand:julia.openProfiler",
     "onCommand:julia.clearProfileHeat"
   ],
@@ -82,16 +84,24 @@
         "title": "Julia: Set Active REPL"
       },
       {
-        "command": "julia.sendSelectionToRepl",
-        "title": "Julia: Send Selection to REPL"
+        "command": "language-julia.executeCodeBlockOrSelection",
+        "title": "Julia: Execute Code in REPL"
       },
       {
-        "command": "julia.sendLineToRepl",
-        "title": "Julia: Send Line to REPL"
+        "command": "language-julia.executeCodeBlockOrSelectionAndMove",
+        "title": "Julia: Execute Code in REPL and Move"
       },
       {
-        "command": "julia.sendFileToRepl",
-        "title": "Julia: Send File to REPL"
+        "command": "language-julia.executeCell",
+        "title": "Julia: Execute Code Cell in REPL"
+      },
+      {
+        "command": "language-julia.executeCellAndMove",
+        "title": "Julia: Execute Code Cell in REPL and Move"
+      },
+      {
+        "command": "language-julia.executeFile",
+        "title": "Julia: Execute File in REPL"
       },
       {
         "command": "julia.openProfiler",
@@ -134,14 +144,51 @@
           ],
           "default": "auto",
           "description": "Value passed to --threads. Use null or an empty string to omit --threads."
+        },
+        "julia.cellDelimiters": {
+          "type": "array",
+          "default": [
+            "^[ \\t]?#[ \\t]#+",
+            "^##(?!#)",
+            "^#([ \\t]?)%%",
+            "^##([ \\t]?)-",
+            "^##([ \\t]?)\\+"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Cell delimiter regular expressions for Julia files."
         }
       }
-    }
+    },
+    "keybindings": [
+      {
+        "command": "language-julia.executeCodeBlockOrSelection",
+        "key": "ctrl+enter",
+        "when": "editorTextFocus && activeEditor != workbench.editor.notebook && editorLangId == julia"
+      },
+      {
+        "command": "language-julia.executeCodeBlockOrSelectionAndMove",
+        "key": "shift+enter",
+        "when": "editorTextFocus && activeEditor != workbench.editor.notebook && editorLangId == julia"
+      },
+      {
+        "command": "language-julia.executeCell",
+        "key": "alt+enter",
+        "when": "editorTextFocus && activeEditor != workbench.editor.notebook && editorLangId == julia"
+      },
+      {
+        "command": "language-julia.executeCellAndMove",
+        "key": "alt+shift+enter",
+        "when": "editorTextFocus && activeEditor != workbench.editor.notebook && editorLangId == julia"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -w -p ./",
+    "test": "npm run compile && node --test test/*.test.js",
     "package": "vsce package --allow-missing-repository --out julia.vsix",
     "install-extension-locally": "npm run package && (code --install-extension julia.vsix --force || \"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code\" --install-extension julia.vsix --force)"
   },

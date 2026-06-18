@@ -11,5 +11,5 @@ The `syntaxes/` files are copied from `julia-vscode/julia-vscode`.
 The `media/profile-viewer.js` file is copied from `jl-profile.js` as vendored
 by `julia-vscode/julia-vscode`.
 
-The Julia profiler tree-building logic in `julia/julia_profiler.jl` is adapted
+The Julia profiler tree-building logic in `julia/julia_runtime.jl` is adapted
 from `ProfileCanvas.jl` and `julia-vscode/julia-vscode`.

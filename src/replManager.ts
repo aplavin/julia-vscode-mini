@@ -2,6 +2,15 @@ import * as crypto from 'crypto'
 import * as fs from 'fs'
 import * as net from 'net'
 import * as vscode from 'vscode'
+import {
+  buildEvalCommand,
+  buildJuliaCells,
+  DEFAULT_CELL_DELIMITERS,
+  findCellAtOffset,
+  JuliaCell,
+  nextCellWithCode,
+  OffsetRange,
+} from './evaluation'
 import { ProfilerPanel } from './profilerPanel'
 import { ProfileEvent, WireEvent } from './types'
 import { generatePipeName, juliaArgsFromConfig, workspaceCwd } from './util'
@@ -87,7 +96,7 @@ export class ReplManager implements vscode.Disposable {
 
     const config = vscode.workspace.getConfiguration('julia')
     const executablePath = config.get<string>('executablePath') || 'julia'
-    const bootstrap = vscode.Uri.joinPath(this.context.extensionUri, 'julia', 'julia_profiler.jl').fsPath
+    const bootstrap = vscode.Uri.joinPath(this.context.extensionUri, 'julia', 'julia_runtime.jl').fsPath
     const shellArgs = [
       ...juliaArgsFromConfig(),
       '-i',
@@ -126,7 +135,7 @@ export class ReplManager implements vscode.Disposable {
     }))
     const picked = await vscode.window.showQuickPick(items, {
       title: 'Set Active Julia REPL',
-      placeHolder: 'Select the REPL that send commands should target',
+      placeHolder: 'Select the REPL that execute commands should target',
     })
     if (picked) {
       this.activeSessionId = picked.session.id
@@ -134,46 +143,120 @@ export class ReplManager implements vscode.Disposable {
     }
   }
 
-  sendSelectionToRepl() {
+  async executeCodeInRepl(shouldMove = false) {
     const editor = vscode.window.activeTextEditor
     if (!editor) {
       vscode.window.showWarningMessage('No active editor.')
       return
     }
     const selections = editor.selections.filter((selection) => !selection.isEmpty)
-    const code = selections.length > 0
-      ? selections.map((selection) => editor.document.getText(selection)).join('\n')
-      : editor.document.lineAt(editor.selection.active.line).text
-    this.sendText(code)
+    if (selections.length > 0) {
+      for (const selection of selections) {
+        await this.executeRange(editor, new vscode.Range(selection.start, selection.end), true)
+      }
+      if (shouldMove) {
+        this.moveToNextNonEmptyLine(editor, selections.at(-1)?.end ?? editor.selection.active)
+      }
+      return
+    }
+
+    const line = editor.document.lineAt(editor.selection.active.line)
+    await this.executeRange(editor, line.range, true)
+    if (shouldMove) {
+      this.moveToNextNonEmptyLine(editor, line.range.end)
+    }
   }
 
-  sendLineToRepl() {
+  async executeCellInRepl(shouldMove = false) {
     const editor = vscode.window.activeTextEditor
     if (!editor) {
       vscode.window.showWarningMessage('No active editor.')
       return
     }
-    this.sendText(editor.document.lineAt(editor.selection.active.line).text)
+    const document = editor.document
+    const delimiters = vscode.workspace.getConfiguration('julia').get<string[]>('cellDelimiters') ?? DEFAULT_CELL_DELIMITERS
+    const { cells, hasExplicitDelimiters } = buildJuliaCells(document.getText(), delimiters)
+    if (!hasExplicitDelimiters) {
+      vscode.window.showWarningMessage('No Julia code cell found.')
+      return
+    }
+
+    const currentOffset = document.offsetAt(editor.selection.active)
+    const cell = findCellAtOffset(cells, currentOffset)
+    if (!cell?.codeRange) {
+      vscode.window.showWarningMessage('No Julia code in the current cell.')
+      return
+    }
+
+    await this.executeOffsetRange(editor, cell.codeRange, true)
+    if (shouldMove) {
+      this.moveToNextCell(editor, cells, cell)
+    }
   }
 
-  sendFileToRepl() {
+  async executeFileInRepl() {
     const editor = vscode.window.activeTextEditor
     if (!editor) {
       vscode.window.showWarningMessage('No active editor.')
       return
     }
-    this.sendText(editor.document.getText())
+    await this.executeText(editor.document.getText(), editor.document.fileName, 0, 0, false)
   }
 
-  private sendText(code: string) {
-    const session = this.getTargetSession()
+  private async executeRange(editor: vscode.TextEditor, range: vscode.Range, softscope: boolean) {
+    const code = editor.document.getText(range)
+    await this.executeText(code, editor.document.fileName, range.start.line, range.start.character, softscope)
+  }
+
+  private async executeOffsetRange(editor: vscode.TextEditor, range: OffsetRange, softscope: boolean) {
+    await this.executeRange(editor, this.vscodeRangeFromOffsetRange(editor.document, range), softscope)
+  }
+
+  private async executeText(code: string, filename: string, line: number, column: number, softscope: boolean) {
+    const session = this.getTargetSession() ?? await this.startRepl()
     if (!session) {
       vscode.window.showWarningMessage('Start a Julia REPL first.')
       return
     }
     this.activeSessionId = session.id
     session.terminal.show(false)
-    session.terminal.sendText(code, true)
+    this.sendTerminalCommand(session.terminal, buildEvalCommand(code, filename, line, column, softscope))
+  }
+
+  private sendTerminalCommand(terminal: vscode.Terminal, command: string) {
+    if (process.platform !== 'win32' && command.includes('\n')) {
+      terminal.sendText(`\u001B[200~${command}\n\u001B[201~`, false)
+      return
+    }
+    terminal.sendText(command, true)
+  }
+
+  private moveToNextNonEmptyLine(editor: vscode.TextEditor, position: vscode.Position) {
+    for (let lineNumber = position.line + 1; lineNumber < editor.document.lineCount; lineNumber += 1) {
+      const line = editor.document.lineAt(lineNumber)
+      if (!line.isEmptyOrWhitespace) {
+        const nextPosition = new vscode.Position(lineNumber, line.firstNonWhitespaceCharacterIndex)
+        this.setCursor(editor, nextPosition)
+        return
+      }
+    }
+  }
+
+  private moveToNextCell(editor: vscode.TextEditor, cells: readonly JuliaCell[], cell: JuliaCell) {
+    const next = nextCellWithCode(cells, cell)
+    if (next?.codeRange) {
+      this.setCursor(editor, editor.document.positionAt(next.codeRange.start))
+    }
+  }
+
+  private setCursor(editor: vscode.TextEditor, position: vscode.Position) {
+    const selection = new vscode.Selection(position, position)
+    editor.selection = selection
+    editor.revealRange(new vscode.Range(position, position))
+  }
+
+  private vscodeRangeFromOffsetRange(document: vscode.TextDocument, range: OffsetRange) {
+    return new vscode.Range(document.positionAt(range.start), document.positionAt(range.end))
   }
 
   private getTargetSession() {

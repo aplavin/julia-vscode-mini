@@ -1,6 +1,7 @@
-module JuliaVSCodeProfiler
+module JuliaVSCodeRuntime
 
 using Profile
+using REPL
 using Sockets
 
 export @profview, @profview_allocs, view_profile, view_profile_allocs
@@ -158,6 +159,25 @@ function send_event(type::AbstractString; data=nothing, profile_type=nothing, me
 end
 
 send_warning(message::AbstractString) = send_event("warning"; message=message)
+
+function eval_code(
+    code::AbstractString,
+    filename::AbstractString,
+    line::Integer,
+    column::Integer;
+    softscope::Bool=true,
+    mod::Module=Main,
+)
+    source_code = String(code)
+    if endswith(source_code, "\n")
+        source_code = chop(source_code; tail=1)
+    end
+    padded_code = string("\n"^max(0, Int(line)), " "^max(0, Int(column)), source_code)
+    if softscope && VERSION >= v"1.5.0"
+        return Base.include_string(REPL.softscope, mod, padded_code, String(filename))
+    end
+    return Base.include_string(mod, padded_code, String(filename))
+end
 
 function connect_to_vscode(pipe_name::AbstractString, id::AbstractString, name::AbstractString)
     session_id[] = String(id)
@@ -353,7 +373,7 @@ macro profview_allocs(ex, args...)
     end
     return quote
         @warn "This Julia version does not support allocation profiling."
-        JuliaVSCodeProfiler.send_warning("This Julia version does not support allocation profiling.")
+        JuliaVSCodeRuntime.send_warning("This Julia version does not support allocation profiling.")
         nothing
     end
 end
@@ -466,7 +486,7 @@ function view_profile_allocs(results = nothing; C=false)
 end
 
 function install_names()
-    Core.eval(Main, :(using .JuliaVSCodeProfiler: @profview, @profview_allocs, view_profile, view_profile_allocs))
+    Core.eval(Main, :(using .JuliaVSCodeRuntime: @profview, @profview_allocs, view_profile, view_profile_allocs))
     return nothing
 end
 
@@ -476,10 +496,10 @@ if length(ARGS) >= 3
     pipe_name = popfirst!(ARGS)
     repl_session_id = popfirst!(ARGS)
     repl_session_name = popfirst!(ARGS)
-    JuliaVSCodeProfiler.connect_to_vscode(pipe_name, repl_session_id, repl_session_name)
-    JuliaVSCodeProfiler.install_names()
+    JuliaVSCodeRuntime.connect_to_vscode(pipe_name, repl_session_id, repl_session_name)
+    JuliaVSCodeRuntime.install_names()
 else
-    @warn "Julia profiler bootstrap was started without pipe/session arguments."
+    @warn "Julia runtime bootstrap was started without pipe/session arguments."
 end
 
 nothing

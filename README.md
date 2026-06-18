@@ -4,7 +4,7 @@ Julia support for VS Code:
 
 - Julia syntax highlighting for `.jl` files
 - command-started Julia REPLs
-- basic editor-to-REPL send commands
+- source-aware editor-to-REPL execute commands
 - `@profview`, `view_profile`, `@profview_allocs`, and `view_profile_allocs`
 - VS Code profiler panel with source navigation and editor heat decorations
 
@@ -20,6 +20,7 @@ Disable the upstream extension to avoid duplicate language contributions.
 ```sh
 npm install
 npm run compile
+npm test
 npm run package
 npm run install-extension-locally
 ```
