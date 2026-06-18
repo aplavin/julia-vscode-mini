@@ -1,0 +1,154 @@
+{
+  "name": "julia",
+  "displayName": "Julia",
+  "description": "Julia REPL and profiler support for VS Code.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Visualization"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onCommand:julia.startRepl",
+    "onCommand:julia.startNewRepl",
+    "onCommand:julia.setActiveRepl",
+    "onCommand:julia.sendSelectionToRepl",
+    "onCommand:julia.sendLineToRepl",
+    "onCommand:julia.sendFileToRepl",
+    "onCommand:julia.openProfiler",
+    "onCommand:julia.clearProfileHeat"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "julia",
+        "aliases": [
+          "Julia",
+          "julia"
+        ],
+        "extensions": [
+          ".jl"
+        ]
+      },
+      {
+        "id": "juliamarkdown",
+        "aliases": [
+          "Julia Markdown",
+          "juliamarkdown"
+        ],
+        "extensions": [
+          ".jmd"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "julia",
+        "scopeName": "source.julia",
+        "path": "./syntaxes/julia_vscode.json"
+      },
+      {
+        "language": "juliamarkdown",
+        "scopeName": "text.html.markdown.julia",
+        "path": "./syntaxes/juliamarkdown.json"
+      },
+      {
+        "scopeName": "markdown.julia.codeblock",
+        "path": "./syntaxes/juliacodeblock.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.julia": "julia"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "julia.startRepl",
+        "title": "Julia: Start REPL"
+      },
+      {
+        "command": "julia.startNewRepl",
+        "title": "Julia: Start New REPL"
+      },
+      {
+        "command": "julia.setActiveRepl",
+        "title": "Julia: Set Active REPL"
+      },
+      {
+        "command": "julia.sendSelectionToRepl",
+        "title": "Julia: Send Selection to REPL"
+      },
+      {
+        "command": "julia.sendLineToRepl",
+        "title": "Julia: Send Line to REPL"
+      },
+      {
+        "command": "julia.sendFileToRepl",
+        "title": "Julia: Send File to REPL"
+      },
+      {
+        "command": "julia.openProfiler",
+        "title": "Julia: Open Profiler"
+      },
+      {
+        "command": "julia.clearProfileHeat",
+        "title": "Julia: Clear Profile Heat"
+      }
+    ],
+    "configuration": {
+      "title": "Julia",
+      "properties": {
+        "julia.executablePath": {
+          "type": "string",
+          "default": "julia",
+          "description": "Julia executable path or command name."
+        },
+        "julia.executableArgs": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Arguments inserted immediately after the Julia executable, such as juliaup channel selectors."
+        },
+        "julia.additionalArgs": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional Julia arguments inserted before the profiler bootstrap script."
+        },
+        "julia.NumThreads": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ],
+          "default": "auto",
+          "description": "Value passed to --threads. Use null or an empty string to omit --threads."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "package": "vsce package --allow-missing-repository --out julia.vsix",
+    "install-extension-locally": "npm run package && (code --install-extension julia.vsix --force || \"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code\" --install-extension julia.vsix --force)"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.4.2",
+    "typescript": "^5.8.3"
+  }
+}
