@@ -105,7 +105,7 @@ export class CellHighlighter implements vscode.Disposable {
     )
     editor.setDecorations(
       this.bottomDecoration,
-      docCells.cells.map((docCell) => this.boundaryRange(editor.document, this.lastOffsetInside(docCell.cellRange)))
+      [this.boundaryRange(editor.document, this.lastOffsetInside(docCells.cells.at(-1)?.cellRange ?? cell.cellRange))]
     )
     editor.setDecorations(
       this.currentCellDecoration,
