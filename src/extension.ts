@@ -14,7 +14,6 @@ export function activate(context: vscode.ExtensionContext) {
     repls,
     vscode.commands.registerCommand('julia.openRepl', () => repls.openRepl()),
     vscode.commands.registerCommand('julia.startRepl', () => repls.startRepl()),
-    vscode.commands.registerCommand('julia.setActiveRepl', () => repls.setActiveRepl()),
     vscode.commands.registerCommand('language-julia.executeCodeBlockOrSelection', () => repls.executeCodeInRepl()),
     vscode.commands.registerCommand('language-julia.executeCodeBlockOrSelectionAndMove', () => repls.executeCodeInRepl(true)),
     vscode.commands.registerCommand('language-julia.executeCell', () => repls.executeCellInRepl()),

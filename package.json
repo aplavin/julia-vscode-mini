@@ -17,7 +17,6 @@
     "onLanguage:julia",
     "onCommand:julia.openRepl",
     "onCommand:julia.startRepl",
-    "onCommand:julia.setActiveRepl",
     "onCommand:language-julia.executeCodeBlockOrSelection",
     "onCommand:language-julia.executeCodeBlockOrSelectionAndMove",
     "onCommand:language-julia.executeCell",
@@ -79,10 +78,6 @@
       {
         "command": "julia.startRepl",
         "title": "Julia: Start REPL"
-      },
-      {
-        "command": "julia.setActiveRepl",
-        "title": "Julia: Set Active REPL"
       },
       {
         "command": "language-julia.executeCodeBlockOrSelection",

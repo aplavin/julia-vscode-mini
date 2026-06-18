@@ -26,13 +26,8 @@ interface ReplSession {
   connected: boolean
 }
 
-interface ReplPick extends vscode.QuickPickItem {
-  session: ReplSession
-}
-
 export class ReplManager implements vscode.Disposable {
   private readonly sessions: ReplSession[] = []
-  private activeSessionId: string | undefined
   private readonly disposables: vscode.Disposable[] = []
   private readonly output: vscode.OutputChannel
 
@@ -47,12 +42,6 @@ export class ReplManager implements vscode.Disposable {
         if (session) {
           this.disposeSession(session, false)
         }
-      }),
-      vscode.window.onDidChangeActiveTerminal((terminal) => {
-        const session = this.sessions.find((s) => s.terminal === terminal)
-        if (session) {
-          this.activeSessionId = session.id
-        }
       })
     )
   }
@@ -66,16 +55,15 @@ export class ReplManager implements vscode.Disposable {
   }
 
   async openRepl() {
-    const existing = this.getActiveSession() ?? this.sessions.at(-1)
+    const existing = this.getActiveTerminalSession() ?? this.sessions.at(-1)
     if (existing) {
-      this.activeSessionId = existing.id
       existing.terminal.show(false)
       return existing
     }
     return this.startRepl()
   }
 
-  async startRepl() {
+  async startRepl(preserveFocus = false) {
     const id = crypto.randomUUID()
     const name = `Julia REPL ${this.sessions.length + 1}`
     const pipeName = generatePipeName(id)
@@ -115,32 +103,9 @@ export class ReplManager implements vscode.Disposable {
     })
 
     this.sessions.push(session)
-    this.activeSessionId = id
-    session.terminal.show(false)
+    session.terminal.show(preserveFocus)
     this.output.appendLine(`Started ${name} with pipe ${pipeName}`)
     return session
-  }
-
-  async setActiveRepl() {
-    if (this.sessions.length === 0) {
-      vscode.window.showWarningMessage('No Julia REPL is running.')
-      return
-    }
-
-    const items: ReplPick[] = this.sessions.map((session) => ({
-      label: session.name,
-      description: session.connected ? 'connected' : 'not connected',
-      detail: session.pipeName,
-      session,
-    }))
-    const picked = await vscode.window.showQuickPick(items, {
-      title: 'Set Active Julia REPL',
-      placeHolder: 'Select the REPL that execute commands should target',
-    })
-    if (picked) {
-      this.activeSessionId = picked.session.id
-      picked.session.terminal.show(false)
-    }
   }
 
   async executeCodeInRepl(shouldMove = false) {
@@ -213,13 +178,12 @@ export class ReplManager implements vscode.Disposable {
   }
 
   private async executeText(code: string, filename: string, line: number, column: number, softscope: boolean) {
-    const session = this.getTargetSession() ?? await this.startRepl()
+    const session = this.getActiveTerminalSession() ?? await this.startRepl(true)
     if (!session) {
       vscode.window.showWarningMessage('Start a Julia REPL first.')
       return
     }
-    this.activeSessionId = session.id
-    session.terminal.show(false)
+    session.terminal.show(true)
     this.sendTerminalCommand(session.terminal, buildEvalCommand(code, filename, line, column, softscope))
   }
 
@@ -259,13 +223,8 @@ export class ReplManager implements vscode.Disposable {
     return new vscode.Range(document.positionAt(range.start), document.positionAt(range.end))
   }
 
-  private getTargetSession() {
-    const terminalSession = this.sessions.find((session) => session.terminal === vscode.window.activeTerminal)
-    return terminalSession ?? this.getActiveSession() ?? this.sessions.at(-1)
-  }
-
-  private getActiveSession() {
-    return this.sessions.find((session) => session.id === this.activeSessionId)
+  private getActiveTerminalSession() {
+    return this.sessions.find((session) => session.terminal === vscode.window.activeTerminal)
   }
 
   private listen(server: net.Server, pipeName: string) {
@@ -324,7 +283,6 @@ export class ReplManager implements vscode.Disposable {
 
     if (event.type === 'connected') {
       session.connected = true
-      this.activeSessionId = session.id
       this.output.appendLine(`${session.name} connected.`)
       return
     }
@@ -352,9 +310,6 @@ export class ReplManager implements vscode.Disposable {
     const index = this.sessions.indexOf(session)
     if (index >= 0) {
       this.sessions.splice(index, 1)
-    }
-    if (this.activeSessionId === session.id) {
-      this.activeSessionId = this.sessions.at(-1)?.id
     }
     session.socket?.destroy()
     session.server.close()
