@@ -486,7 +486,13 @@ function view_profile_allocs(results = nothing; C=false)
 end
 
 function install_names()
-    Core.eval(Main, :(using .JuliaVSCodeRuntime: @profview, @profview_allocs, view_profile, view_profile_allocs))
+    Core.eval(Main, quote
+        using .JuliaVSCodeRuntime: @profview, @profview_allocs, view_profile, view_profile_allocs
+
+        function _vscode_eval(filename, line, column, code; softscope=true, mod=Main)
+            JuliaVSCodeRuntime.eval_code(code, filename, line, column; softscope=softscope, mod=mod)
+        end
+    end)
     return nothing
 end
 

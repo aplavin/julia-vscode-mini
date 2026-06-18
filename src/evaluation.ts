@@ -50,7 +50,7 @@ export function buildEvalCommand(code: string, filename: string, line: number, c
   const safeLine = Math.max(0, Math.trunc(line))
   const safeColumn = Math.max(0, Math.trunc(column))
   const softscopeArg = softscope ? '' : '; softscope=false'
-  return `JuliaVSCodeRuntime.eval_code(${juliaMultilineStringLiteral(code)}, ${juliaStringLiteral(filename)}, ${safeLine}, ${safeColumn}${softscopeArg})`
+  return `_vscode_eval(${juliaStringLiteral(filename)}, ${safeLine}, ${safeColumn}, ${juliaMultilineStringLiteral(code)}${softscopeArg})`
 }
 
 export function buildJuliaCells(text: string, delimiters = DEFAULT_CELL_DELIMITERS) {

@@ -28,7 +28,7 @@ test('builds multiline literals without changing indentation', () => {
 test('builds source-aware eval commands', () => {
   assert.equal(
     buildEvalCommand('x = 1', '/tmp/example.jl', 2, 4, false),
-    'JuliaVSCodeRuntime.eval_code("""\nx = 1\n""", "/tmp/example.jl", 2, 4; softscope=false)'
+    '_vscode_eval("/tmp/example.jl", 2, 4, """\nx = 1\n"""; softscope=false)'
   )
 })
 
