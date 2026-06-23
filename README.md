@@ -1,34 +1,5 @@
-# Julia
+# Julia Mini
 
-Julia support for VS Code:
+Julia Mini is a lean Julia extension for VS Code: syntax highlighting, Unicode completions such as `\alpha`, native Go to Definition across the workspace and installed dependencies, profiling via `@profview`, `view_profile`, `@profview_allocs`, and `view_profile_allocs`, and REPL-oriented execution commands. Use `Julia: Execute Code in REPL`, `Julia: Execute Code in REPL and Move`, `Julia: Execute Code Cell in REPL`, and `Julia: Execute File in REPL`; the core command semantics and keybindings match the existing Julia extension.
 
-- Julia syntax highlighting for `.jl` files
-- open-or-create and fresh-start Julia REPL commands
-- source-aware execute commands that use the active Julia REPL terminal or create a fresh one
-- code-cell frames and current-cell highlighting for `.jl` files with explicit cell delimiters
-- Julia unicode completions like `\alpha` and `\:smile:`
-- `@profview`, `view_profile`, `@profview_allocs`, and `view_profile_allocs`
-- VS Code profiler panel with source navigation and editor heat decorations
-
-This extension intentionally does not include a language server, debugger, notebooks,
-test controller, package UI, plot pane, Revise integration, or persistent helper
-Julia processes.
-
-Use this as a replacement for the upstream Julia VS Code extension while testing.
-Disable the upstream extension to avoid duplicate language contributions.
-
-## Development
-
-```sh
-npm install
-npm run compile
-npm test
-npm run package
-npm run install-extension-locally
-```
-
-If Node is not already available, use:
-
-```sh
-nix-shell
-```
+Julia Mini does not keep long-running Julia processes in the background. It starts Julia only when you explicitly open or start a REPL or execute Julia code, does the rest cheaply in the JavaScript backend, and exposes `julia-vscode eval <code>` so shell tools and AI assistants can run code in the active VS Code REPL. No magic: explicit actions, lightweight indexing, and predictable REPL interaction.

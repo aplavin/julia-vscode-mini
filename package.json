@@ -1,16 +1,30 @@
 {
-  "name": "julia",
-  "displayName": "Julia",
-  "description": "Julia REPL and profiler support for VS Code.",
-  "version": "0.0.1",
-  "publisher": "local",
-  "license": "MIT",
+  "name": "julia-mini",
+  "displayName": "Julia Mini",
+  "description": "Lean Julia support for VS Code without background Julia processes.",
+  "version": "0.1.0",
+  "publisher": "aplavin",
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://github.com/aplavin/julia-vscode-mini#readme",
+  "bugs": {
+    "url": "https://github.com/aplavin/julia-vscode-mini/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aplavin/julia-vscode-mini.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
-    "Programming Languages",
-    "Visualization"
+    "Programming Languages"
+  ],
+  "keywords": [
+    "julia",
+    "repl",
+    "profiler",
+    "unicode",
+    "go to definition"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
@@ -208,8 +222,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -w -p ./",
     "test": "npm run compile && node --test test/*.test.js",
-    "package": "vsce package --allow-missing-repository --out julia.vsix",
-    "install-extension-locally": "npm run package && (code --install-extension julia.vsix --force || \"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code\" --install-extension julia.vsix --force)"
+    "package": "vsce package --out julia-mini.vsix",
+    "install-extension-locally": "npm run package && (code --install-extension julia-mini.vsix --force || \"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code\" --install-extension julia-mini.vsix --force)"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
