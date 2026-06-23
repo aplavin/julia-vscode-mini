@@ -28,6 +28,7 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
+    "onStartupFinished",
     "onLanguage:julia",
     "onCommand:julia.openRepl",
     "onCommand:julia.startRepl",
@@ -124,6 +125,10 @@
       {
         "command": "julia.symbolIndex.rebuild",
         "title": "Julia: Rebuild Symbol Index"
+      },
+      {
+        "command": "julia.installCli",
+        "title": "Julia: Install julia-vscode CLI"
       }
     ],
     "configuration": {

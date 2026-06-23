@@ -53,6 +53,12 @@ export function buildEvalCommand(code: string, filename: string, line: number, c
   return `_vscode_eval(${juliaStringLiteral(filename)}, ${safeLine}, ${safeColumn}, ${juliaMultilineStringLiteral(code)}${softscopeArg})`
 }
 
+// Command pasted into the REPL for the command-line tool: evaluate `code` while capturing
+// its printed output/errors (the Julia side streams them back over the socket).
+export function buildCaptureCommand(code: string) {
+  return `_vscode_evalc(${juliaMultilineStringLiteral(code)})`
+}
+
 export function buildJuliaCells(text: string, delimiters = DEFAULT_CELL_DELIMITERS) {
   const delimiterOffsets = findCellDelimiterOffsets(text, delimiters)
   const hasExplicitDelimiters = delimiterOffsets.length > 0

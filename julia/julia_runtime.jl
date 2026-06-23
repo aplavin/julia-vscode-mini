@@ -1,5 +1,6 @@
 module JuliaVSCodeRuntime
 
+using Base64
 using Profile
 using REPL
 using Sockets
@@ -177,6 +178,59 @@ function eval_code(
         return Base.include_string(REPL.softscope, mod, padded_code, String(filename))
     end
     return Base.include_string(mod, padded_code, String(filename))
+end
+
+# Evaluate `code` for the command-line tool: capture everything printed to stdout/stderr
+# (and any error display), streaming it back to VS Code over the existing socket as `output`
+# events while also echoing it to the real terminal, then signal completion with `evaldone`.
+# The return value is intentionally ignored (only printed output matters to the CLI).
+function eval_code_capture(code::AbstractString; mod::Module=Main, softscope::Bool=true)
+    old_out = stdout
+    old_err = stderr
+    pipe = Pipe()
+    Base.link_pipe!(pipe; reader_supports_async=true, writer_supports_async=true)
+
+    # Tee task: forward every chunk to the real terminal AND to VS Code (base64 so arbitrary
+    # bytes, incl. a multibyte char split across chunks, survive the JSON event intact).
+    reader = @async try
+        while !eof(pipe)
+            bytes = readavailable(pipe)
+            isempty(bytes) && continue
+            try
+                write(old_out, bytes)
+            catch
+                # A dead terminal must not kill the reader (that would block shutdown below).
+            end
+            send_event("output"; data=base64encode(bytes))
+        end
+    catch
+        # Any reader failure must not prevent the `evaldone` signal the CLI waits for.
+    end
+
+    redirect_stdout(pipe.in)
+    redirect_stderr(pipe.in)
+    try
+        eval_code(code, "cli", 0, 0; softscope=softscope, mod=mod)
+    catch err
+        # A thrown exception escapes the redirect otherwise, so render it here (as the REPL
+        # does): unwrap include_string's LoadError, show with a REPL-scrubbed backtrace.
+        unwrapped = err isa LoadError ? err.error : err
+        showerror(stdout, unwrapped, Base.scrub_repl_backtrace(catch_backtrace()))
+        println(stdout)
+    finally
+        flush(stdout)
+        flush(stderr)
+        redirect_stdout(old_out)
+        redirect_stderr(old_err)
+        close(pipe.in)
+        try
+            wait(reader)
+        catch
+            # Reader already failed; output may be incomplete but we must still finish.
+        end
+        send_event("evaldone")  # always — success, error, or interrupt
+    end
+    return nothing
 end
 
 function connect_to_vscode(pipe_name::AbstractString, id::AbstractString, name::AbstractString)
@@ -491,6 +545,10 @@ function install_names()
 
         function _vscode_eval(filename, line, column, code; softscope=true, mod=Main)
             JuliaVSCodeRuntime.eval_code(code, filename, line, column; softscope=softscope, mod=mod)
+        end
+
+        function _vscode_evalc(code; softscope=true, mod=Main)
+            JuliaVSCodeRuntime.eval_code_capture(code; softscope=softscope, mod=mod)
         end
     end)
     return nothing

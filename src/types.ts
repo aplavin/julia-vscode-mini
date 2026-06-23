@@ -23,5 +23,6 @@ export interface WireEvent {
   sessionName?: string
   profileType?: string
   message?: string
-  data?: Record<string, ProfileNode>
+  // `profile` events carry a node tree; `output` events carry a base64-encoded byte string.
+  data?: Record<string, ProfileNode> | string
 }

@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const {
+  buildCaptureCommand,
   buildEvalCommand,
   buildJuliaCells,
   escapeJuliaStringContent,
@@ -29,6 +30,17 @@ test('builds source-aware eval commands', () => {
   assert.equal(
     buildEvalCommand('x = 1', '/tmp/example.jl', 2, 4, false),
     '_vscode_eval("/tmp/example.jl", 2, 4, """\nx = 1\n"""; softscope=false)'
+  )
+})
+
+test('builds capture commands for the CLI', () => {
+  assert.equal(buildCaptureCommand('sin(1)'), '_vscode_evalc("""\nsin(1)\n""")')
+})
+
+test('capture commands keep multi-line code and indentation intact', () => {
+  assert.equal(
+    buildCaptureCommand('for i in 1:3\n    println(i)\nend'),
+    '_vscode_evalc("""\nfor i in 1:3\n    println(i)\nend\n""")'
   )
 })
 

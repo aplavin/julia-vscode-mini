@@ -1,9 +1,10 @@
 import * as crypto from 'crypto'
 import * as fs from 'fs'
-import * as net from 'net'
 import * as path from 'path'
 import * as vscode from 'vscode'
+import { CliBridge } from './cliBridge'
 import {
+  buildCaptureCommand,
   buildEvalCommand,
   buildJuliaCells,
   DEFAULT_CELL_DELIMITERS,
@@ -12,25 +13,25 @@ import {
   nextCellWithCode,
   OffsetRange,
 } from './evaluation'
+import { EventSocketServer } from './eventSocketServer'
+import { cliSocketPath, generatePipeName } from './paths'
 import { ProfilerPanel } from './profilerPanel'
-import { ProfileEvent, WireEvent } from './types'
-import { generatePipeName, juliaArgsFromConfig, workspaceCwd } from './util'
+import { ProfileNode } from './types'
+import { juliaArgsFromConfig, workspaceCwd } from './util'
 
 interface ReplSession {
   id: string
   name: string
   pipeName: string
   terminal: vscode.Terminal
-  server: net.Server
-  socket?: net.Socket
-  buffer: string
-  connected: boolean
+  eventServer: EventSocketServer
 }
 
 export class ReplManager implements vscode.Disposable {
   private readonly sessions: ReplSession[] = []
   private readonly disposables: vscode.Disposable[] = []
   private readonly output: vscode.OutputChannel
+  private cliBridge?: CliBridge
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -45,12 +46,14 @@ export class ReplManager implements vscode.Disposable {
         }
       })
     )
+    this.startCliBridge()
   }
 
   dispose() {
     for (const session of [...this.sessions]) {
       this.disposeSession(session, true)
     }
+    this.cliBridge?.dispose()
     this.disposables.forEach((d) => d.dispose())
     this.output.dispose()
   }
@@ -68,20 +71,32 @@ export class ReplManager implements vscode.Disposable {
     const id = crypto.randomUUID()
     const name = `Julia REPL ${this.sessions.length + 1}`
     const pipeName = generatePipeName(id)
-    const server = net.createServer()
+
+    const eventServer = new EventSocketServer(pipeName, {
+      onConnected: () => this.output.appendLine(`${name} connected.`),
+      onWarning: (message) => vscode.window.showWarningMessage(message),
+      onProfile: (event) =>
+        this.profiler.showProfile({
+          sessionId: event.sessionId ?? id,
+          sessionName: event.sessionName ?? name,
+          profileType: event.profileType ?? 'Thread',
+          data: (event.data ?? {}) as Record<string, ProfileNode>,
+        }),
+      onJuliaEvent: (event) => this.cliBridge?.handleJuliaEvent(event),
+      onInvalid: (line) => this.output.appendLine(`${name} sent invalid JSON: ${line}`),
+      onUnknown: (event) => this.output.appendLine(`${name} sent unknown event: ${JSON.stringify(event)}`),
+      onError: (err) => this.output.appendLine(`${name} pipe error: ${err.message}`),
+    })
 
     const session: ReplSession = {
       id,
       name,
       pipeName,
-      server,
-      buffer: '',
-      connected: false,
+      eventServer,
       terminal: undefined as unknown as vscode.Terminal,
     }
 
-    server.on('connection', (socket) => this.attachSocket(session, socket))
-    await this.listen(server, pipeName)
+    await eventServer.listen()
 
     const config = vscode.workspace.getConfiguration('julia')
     const executablePath = config.get<string>('executablePath') || 'julia'
@@ -242,83 +257,24 @@ export class ReplManager implements vscode.Disposable {
     return path.dirname(uri.fsPath)
   }
 
-  private listen(server: net.Server, pipeName: string) {
-    return new Promise<void>((resolve, reject) => {
-      const onError = (err: Error) => {
-        reject(err)
-      }
-      server.once('error', onError)
-      server.listen(pipeName, () => {
-        server.off('error', onError)
-        resolve()
-      })
+  // Start the command-line bridge for this window's workspace, so `julia-vscode eval` can
+  // reach this REPL. Skipped when no workspace folder is open (the CLI then finds no socket).
+  private startCliBridge() {
+    const folder = workspaceCwd()?.fsPath
+    if (!folder) {
+      return
+    }
+    const socketPath = cliSocketPath(folder)
+    const bridge = new CliBridge(socketPath, async (code) => {
+      const session = this.getActiveTerminalSession() ?? this.sessions.at(-1) ?? await this.startRepl(true)
+      session.terminal.show(true)
+      this.sendTerminalCommand(session.terminal, buildCaptureCommand(code))
     })
-  }
-
-  private attachSocket(session: ReplSession, socket: net.Socket) {
-    session.socket?.destroy()
-    session.socket = socket
-    session.buffer = ''
-    socket.setEncoding('utf8')
-    socket.on('data', (chunk) => this.handleChunk(session, chunk.toString()))
-    socket.on('close', () => {
-      session.connected = false
-      if (session.socket === socket) {
-        session.socket = undefined
-      }
-    })
-    socket.on('error', (err) => {
-      this.output.appendLine(`${session.name} pipe error: ${err.message}`)
-    })
-  }
-
-  private handleChunk(session: ReplSession, chunk: string) {
-    session.buffer += chunk
-    while (true) {
-      const newline = session.buffer.indexOf('\n')
-      if (newline < 0) {
-        break
-      }
-      const line = session.buffer.slice(0, newline).trim()
-      session.buffer = session.buffer.slice(newline + 1)
-      if (line.length > 0) {
-        this.handleLine(session, line)
-      }
-    }
-  }
-
-  private handleLine(session: ReplSession, line: string) {
-    let event: WireEvent
-    try {
-      event = JSON.parse(line) as WireEvent
-    } catch (err) {
-      this.output.appendLine(`${session.name} sent invalid JSON: ${line}`)
-      return
-    }
-
-    if (event.type === 'connected') {
-      session.connected = true
-      this.output.appendLine(`${session.name} connected.`)
-      return
-    }
-
-    if (event.type === 'warning') {
-      vscode.window.showWarningMessage(event.message ?? 'Julia warning')
-      return
-    }
-
-    if (event.type === 'profile' && event.data) {
-      const profile: ProfileEvent = {
-        sessionId: event.sessionId ?? session.id,
-        sessionName: event.sessionName ?? session.name,
-        profileType: event.profileType ?? 'Thread',
-        data: event.data,
-      }
-      this.profiler.showProfile(profile)
-      return
-    }
-
-    this.output.appendLine(`${session.name} sent unknown event: ${line}`)
+    this.cliBridge = bridge
+    bridge.listen().then(
+      () => this.output.appendLine(`julia-vscode CLI listening at ${socketPath}`),
+      (err) => this.output.appendLine(`julia-vscode CLI failed to listen at ${socketPath}: ${err.message}`)
+    )
   }
 
   private disposeSession(session: ReplSession, disposeTerminal: boolean) {
@@ -326,8 +282,7 @@ export class ReplManager implements vscode.Disposable {
     if (index >= 0) {
       this.sessions.splice(index, 1)
     }
-    session.socket?.destroy()
-    session.server.close()
+    session.eventServer.dispose()
     if (disposeTerminal) {
       session.terminal.dispose()
     }

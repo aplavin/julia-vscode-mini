@@ -1,0 +1,49 @@
+#!/bin/sh
+# julia-vscode — run Julia code in the VS Code REPL of the current project.
+# Finds the per-workspace CLI socket of the VS Code window whose project contains the current
+# directory, sends the code, and streams the printed output/errors back to stdout.
+
+if [ "$1" != eval ]; then
+  cat >&2 <<'EOF'
+julia-vscode — run Julia code in the VS Code REPL of the current project
+
+usage:
+  julia-vscode eval '<julia code>'   evaluate code in this project's REPL
+  julia-vscode eval                  read code from stdin
+
+Output and errors stream back here and to the VS Code terminal.
+EOF
+  [ -z "$1" ] && exit 0 || exit 2
+fi
+shift
+
+# Code from the argument, or stdin if no argument was given.
+if [ "$#" -gt 0 ]; then
+  code=$1
+else
+  code=$(cat)
+fi
+
+# Walk up from the current directory; the socket name is sha1(dir)[:16], matching the
+# extension's cliSocketPath. The nearest enclosing project's window wins.
+dir=$(pwd -P)
+sock=
+while :; do
+  h=$(printf '%s' "$dir" | shasum | cut -c1-16)
+  candidate="/tmp/julia-vscode-cli-$h.sock"
+  if [ -S "$candidate" ]; then
+    sock=$candidate
+    break
+  fi
+  [ "$dir" = "/" ] && break
+  dir=$(dirname "$dir")
+done
+
+if [ -z "$sock" ]; then
+  echo "julia-vscode: no Julia REPL window found for $(pwd -P)" >&2
+  exit 1
+fi
+
+# Send raw code; the half-close (pipe EOF) marks end-of-request. The extension streams the
+# output back and closes the socket when the eval finishes.
+printf '%s' "$code" | nc -U "$sock"
