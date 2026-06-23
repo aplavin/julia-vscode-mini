@@ -232,6 +232,7 @@
     "watch": "tsc -w -p ./",
     "test": "npm run compile && node --test test/*.test.js",
     "package": "vsce package --out julia-mini.vsix",
+    "release:github": "npm test && npm run package && gh release create \"v$npm_package_version\" julia-mini.vsix --title \"v$npm_package_version\" --notes \"\"",
     "install-extension-locally": "npm run package && (code --install-extension julia-mini.vsix --force || \"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code\" --install-extension julia-mini.vsix --force)"
   },
   "devDependencies": {
