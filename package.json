@@ -2,7 +2,7 @@
   "name": "julia-mini",
   "displayName": "Julia Mini",
   "description": "Julia support for VS Code that starts Julia only when you ask it to.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "aplavin",
   "license": "SEE LICENSE IN LICENSE",
   "homepage": "https://github.com/aplavin/julia-vscode-mini#readme",
