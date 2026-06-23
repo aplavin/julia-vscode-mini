@@ -9,31 +9,10 @@ export function workspaceCwd() {
   return vscode.workspace.workspaceFolders?.[0]?.uri
 }
 
-function configuredValue<T>(config: vscode.WorkspaceConfiguration, key: string): T | undefined {
-  const inspected = config.inspect<T>(key)
-  return [
-    inspected?.workspaceFolderLanguageValue,
-    inspected?.workspaceFolderValue,
-    inspected?.workspaceLanguageValue,
-    inspected?.workspaceValue,
-    inspected?.globalLanguageValue,
-    inspected?.globalValue,
-  ].find((value) => value !== undefined)
-}
-
 export function juliaArgsFromConfig() {
   const config = vscode.workspace.getConfiguration('julia')
-  const executableArgs = config.get<string[]>('executableArgs') ?? []
-  const additionalArgs = config.get<string[]>('additionalArgs') ?? []
-  const configuredNumThreads = configuredValue<string | number | null>(config, 'NumThreads')
-  const numThreads = configuredNumThreads === undefined ? 'auto' : configuredNumThreads
-
-  const args: string[] = [...executableArgs, '--project=@.']
-  if (numThreads !== null && numThreads !== undefined && `${numThreads}`.length > 0) {
-    args.push(`--threads=${numThreads}`)
-  }
-  args.push('--banner=no', ...additionalArgs)
-  return args
+  const executableArgs = config.get<string[]>('executableArgs')!
+  return [...executableArgs, '--project=@.', '--banner=no']
 }
 
 export function sortedProfileSelections(data: Record<string, unknown>) {

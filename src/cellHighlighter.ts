@@ -1,7 +1,6 @@
 import * as vscode from 'vscode'
 import {
   buildJuliaCells,
-  DEFAULT_CELL_DELIMITERS,
   findCellAtOffset,
 } from './evaluation'
 import type { JuliaCell, OffsetRange } from './evaluation'
@@ -52,12 +51,6 @@ export class CellHighlighter implements vscode.Disposable {
       }),
       vscode.workspace.onDidCloseTextDocument((document) => {
         this.cache.delete(document.uri.toString())
-      }),
-      vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration('julia.cellDelimiters')) {
-          this.cache.clear()
-          this.refreshVisibleEditors()
-        }
       })
     )
     this.refreshVisibleEditors()
@@ -126,8 +119,7 @@ export class CellHighlighter implements vscode.Disposable {
       return cached
     }
 
-    const delimiters = vscode.workspace.getConfiguration('julia').get<string[]>('cellDelimiters') ?? DEFAULT_CELL_DELIMITERS
-    const docCells = buildJuliaCells(document.getText(), delimiters)
+    const docCells = buildJuliaCells(document.getText())
     const cachedCells = {
       version: document.version,
       ...docCells,

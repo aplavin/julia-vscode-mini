@@ -191,10 +191,10 @@ class SymbolIndexFeature {
     return vscode.workspace.getConfiguration('julia')
   }
   private get maxDefinitionResults(): number {
-    return this.config().get<number>('symbolIndex.maxDefinitionResults') ?? 50
+    return this.config().get<number>('symbolIndex.maxDefinitionResults')!
   }
   private get juliaSourceRoots(): string[] {
-    return this.config().get<string[]>('symbolIndex.juliaSourceRoots') ?? []
+    return this.config().get<string[]>('symbolIndex.juliaSourceRoots')!
   }
 
   // ---- providers ----
@@ -272,8 +272,8 @@ class SymbolIndexFeature {
   // ---- probe ----
   private async runProbe(): Promise<ProbeResult | undefined> {
     const cfg = this.config()
-    const exe = cfg.get<string>('executablePath') || 'julia'
-    const exeArgs = cfg.get<string[]>('executableArgs') ?? []
+    const exe = cfg.get<string>('executablePath')!
+    const exeArgs = cfg.get<string[]>('executableArgs')!
     try {
       const stdout = await new Promise<string>((resolve, reject) => {
         execFile(exe, buildProbeArgs(exeArgs), { timeout: PROBE_TIMEOUT_MS }, (err, out) => {
@@ -622,7 +622,7 @@ function nearestProjectDirForUri(file: string, environments: readonly Environmen
 }
 
 export function registerSymbolIndexFeature(context: vscode.ExtensionContext): vscode.Disposable {
-  const enabled = vscode.workspace.getConfiguration('julia').get<boolean>('symbolIndex.enable') ?? true
+  const enabled = vscode.workspace.getConfiguration('julia').get<boolean>('symbolIndex.enable')!
   if (!enabled) return new vscode.Disposable(() => {})
 
   const feature = new SymbolIndexFeature(context)

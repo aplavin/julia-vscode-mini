@@ -33,16 +33,7 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished",
-    "onLanguage:julia",
-    "onCommand:julia.openRepl",
-    "onCommand:julia.startRepl",
-    "onCommand:language-julia.executeCodeBlockOrSelection",
-    "onCommand:language-julia.executeCodeBlockOrSelectionAndMove",
-    "onCommand:language-julia.executeCell",
-    "onCommand:language-julia.executeCellAndMove",
-    "onCommand:language-julia.executeFile",
-    "onCommand:julia.openProfiler",
-    "onCommand:julia.clearProfileHeat"
+    "onLanguage:julia"
   ],
   "contributes": {
     "languages": [
@@ -145,42 +136,14 @@
         },
         "julia.executableArgs": {
           "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "description": "Arguments inserted immediately after the Julia executable, such as juliaup channel selectors."
-        },
-        "julia.additionalArgs": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "description": "Additional Julia arguments inserted before the profiler bootstrap script."
-        },
-        "julia.NumThreads": {
-          "type": [
-            "string",
-            "number",
-            "null"
-          ],
-          "default": "auto",
-          "description": "Value passed to --threads. Use null or an empty string to omit --threads."
-        },
-        "julia.cellDelimiters": {
-          "type": "array",
           "default": [
-            "^[ \\t]?#[ \\t]#+",
-            "^##(?!#)",
-            "^#([ \\t]?)%%",
-            "^##([ \\t]?)-",
-            "^##([ \\t]?)\\+"
+            "--threads",
+            "auto"
           ],
           "items": {
             "type": "string"
           },
-          "description": "Cell delimiter regular expressions for Julia files."
+          "description": "Arguments passed to Julia before the project/banner flags (and to the metadata probe). Put thread count, juliaup channel selectors, sysimage flags, etc. here. juliaup channel selectors (e.g. \"+1.10\") must come first."
         },
         "julia.symbolIndex.enable": {
           "type": "boolean",
@@ -197,7 +160,7 @@
         },
         "julia.symbolIndex.maxDefinitionResults": {
           "type": "number",
-          "default": 50,
+          "default": 100,
           "description": "Maximum number of ranked locations returned for Go to Definition."
         }
       }

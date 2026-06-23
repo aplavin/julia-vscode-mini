@@ -7,7 +7,6 @@ import {
   buildCaptureCommand,
   buildEvalCommand,
   buildJuliaCells,
-  DEFAULT_CELL_DELIMITERS,
   findCellAtOffset,
   JuliaCell,
   nextCellWithCode,
@@ -99,7 +98,7 @@ export class ReplManager implements vscode.Disposable {
     await eventServer.listen()
 
     const config = vscode.workspace.getConfiguration('julia')
-    const executablePath = config.get<string>('executablePath') || 'julia'
+    const executablePath = config.get<string>('executablePath')!
     const bootstrap = vscode.Uri.joinPath(this.context.extensionUri, 'julia', 'julia_runtime.jl').fsPath
     const shellArgs = [
       ...juliaArgsFromConfig(),
@@ -155,8 +154,7 @@ export class ReplManager implements vscode.Disposable {
       return
     }
     const document = editor.document
-    const delimiters = vscode.workspace.getConfiguration('julia').get<string[]>('cellDelimiters') ?? DEFAULT_CELL_DELIMITERS
-    const { cells, hasExplicitDelimiters } = buildJuliaCells(document.getText(), delimiters)
+    const { cells, hasExplicitDelimiters } = buildJuliaCells(document.getText())
     if (!hasExplicitDelimiters) {
       vscode.window.showWarningMessage('No Julia code cell found.')
       return
