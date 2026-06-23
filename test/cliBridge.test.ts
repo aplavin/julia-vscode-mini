@@ -8,7 +8,7 @@ const path = require('node:path')
 const { CliBridge } = require('../dist/cliBridge')
 
 // Real sockets, no mocks. `paste` is never invoked here — these cases only exercise the
-// socket-binding / liveness behavior, not the eval relay (that is covered by e2e.test.js).
+// socket-binding / liveness behavior, not the eval relay (that is covered by e2e.test.ts).
 function tmpSock() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jlvsc-br-'))
   return path.join(dir, 's.sock')

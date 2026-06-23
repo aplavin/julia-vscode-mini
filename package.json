@@ -230,7 +230,7 @@
     "generate-unicode-completions": "julia --startup-file=no scripts/generate_unicode_completions.jl",
     "compile": "tsc -p ./",
     "watch": "tsc -w -p ./",
-    "test": "npm run compile && node --test test/*.test.js",
+    "test": "npm run compile && node --import tsx --test test/*.test.ts",
     "package": "vsce package --out julia-mini.vsix",
     "release:github": "npm test && npm run package && gh release create \"v$npm_package_version\" julia-mini.vsix --title \"v$npm_package_version\" --notes \"\"",
     "install-extension-locally": "npm run package && (code --install-extension julia-mini.vsix --force || \"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code\" --install-extension julia-mini.vsix --force)"
@@ -239,6 +239,7 @@
     "@types/node": "^24.0.0",
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.4.2",
+    "tsx": "^4.22.4",
     "typescript": "^5.8.3"
   },
   "dependencies": {

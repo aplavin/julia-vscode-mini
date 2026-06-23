@@ -28,7 +28,7 @@ The Julia Mini extension runs the `julia` command from your PATH by default. Set
 Run the `Install julia-vscode CLI` command to install the `julia-vscode` command into `/usr/local/bin`. Then shell tools and AI assistants can send code to the active VS Code REPL:
 
 ```sh
-> julia-vscode eval '1 + 2'
+> julia-vscode eval 'println(1 + 2)'
 3
 ```
 
