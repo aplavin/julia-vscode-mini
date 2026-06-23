@@ -3,6 +3,7 @@ import { CellHighlighter } from './cellHighlighter'
 import { ProfilerPanel } from './profilerPanel'
 import { ReplManager } from './replManager'
 import { registerUnicodeCompletionProvider } from './unicodeCompletionProvider'
+import { registerSymbolIndexFeature } from './symbolIndexFeature'
 
 export function activate(context: vscode.ExtensionContext) {
   const cellHighlighter = new CellHighlighter()
@@ -14,6 +15,7 @@ export function activate(context: vscode.ExtensionContext) {
     profiler,
     repls,
     registerUnicodeCompletionProvider(),
+    registerSymbolIndexFeature(context),
     vscode.commands.registerCommand('julia.openRepl', () => repls.openRepl()),
     vscode.commands.registerCommand('julia.startRepl', () => repls.startRepl()),
     vscode.commands.registerCommand('language-julia.executeCodeBlockOrSelection', () => repls.executeCodeInRepl()),

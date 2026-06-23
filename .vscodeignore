@@ -1,4 +1,7 @@
 node_modules/**
+!node_modules/@plutojl/**
+!node_modules/@lezer/**
+!node_modules/smol-toml/**
 src/**
 scripts/**
 test/**

@@ -106,6 +106,10 @@
       {
         "command": "julia.clearProfileHeat",
         "title": "Julia: Clear Profile Heat"
+      },
+      {
+        "command": "julia.symbolIndex.rebuild",
+        "title": "Julia: Rebuild Symbol Index"
       }
     ],
     "configuration": {
@@ -154,6 +158,24 @@
             "type": "string"
           },
           "description": "Cell delimiter regular expressions for Julia files."
+        },
+        "julia.symbolIndex.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the parser-based symbol index (Outline, workspace symbols, Go to Definition)."
+        },
+        "julia.symbolIndex.juliaSourceRoots": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Explicit Base/stdlib source roots to index. Used as a fallback/escape hatch when the Julia metadata probe cannot locate them."
+        },
+        "julia.symbolIndex.maxDefinitionResults": {
+          "type": "number",
+          "default": 50,
+          "description": "Maximum number of ranked locations returned for Go to Definition."
         }
       }
     },
@@ -194,5 +216,9 @@
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.4.2",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@plutojl/lezer-julia": "^1.1.0",
+    "smol-toml": "^1.7.0"
   }
 }
