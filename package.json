@@ -1,8 +1,8 @@
 {
   "name": "julia-mini",
   "displayName": "Julia Mini",
-  "description": "Lean Julia support for VS Code without background Julia processes.",
-  "version": "0.1.0",
+  "description": "Julia support for VS Code that starts Julia only when you ask it to.",
+  "version": "0.1.1",
   "publisher": "aplavin",
   "license": "SEE LICENSE IN LICENSE",
   "homepage": "https://github.com/aplavin/julia-vscode-mini#readme",
@@ -21,10 +21,14 @@
   ],
   "keywords": [
     "julia",
+    "vscode",
     "repl",
-    "profiler",
+    "profiling",
     "unicode",
-    "go to definition"
+    "go to definition",
+    "navigation",
+    "cli",
+    "lightweight"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
