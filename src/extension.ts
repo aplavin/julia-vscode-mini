@@ -50,7 +50,7 @@ async function promptJuliaChannel(context: vscode.ExtensionContext) {
   if (input === undefined) {
     return undefined // cancelled — don't start a REPL
   }
-  const channel = input.trim().replace(/^\+/, '')
+  const channel = input.trim()
   await context.workspaceState.update(key, channel)
   return channel
 }
