@@ -69,7 +69,7 @@ export class ReplManager implements vscode.Disposable {
     return this.startRepl()
   }
 
-  async startRepl(preserveFocus = false, cwd: string | vscode.Uri | undefined = workspaceCwd(), coverage = false) {
+  async startRepl(preserveFocus = false, cwd: string | vscode.Uri | undefined = workspaceCwd(), coverage = false, channel = '') {
     const id = crypto.randomUUID()
     const name = `Julia REPL ${this.sessions.length + 1}${coverage ? ' (coverage)' : ''}`
     const pipeName = generatePipeName(id)
@@ -115,18 +115,23 @@ export class ReplManager implements vscode.Disposable {
       name,
     ]
 
+    const env: Record<string, string> = {}
     // Tell the runtime which files to report coverage for, so it doesn't serialize the hundreds
     // of instrumented dependency files (only workspace files matter to the display).
-    const env = coverage
-      ? { JULIA_VSCODE_COVERAGE_ROOTS: (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath).join('\n') }
-      : undefined
+    if (coverage) {
+      env.JULIA_VSCODE_COVERAGE_ROOTS = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath).join('\n')
+    }
+    // juliaup selects this channel for the launched REPL; a non-juliaup `julia` ignores it.
+    if (channel) {
+      env.JULIAUP_CHANNEL = channel
+    }
 
     session.terminal = vscode.window.createTerminal({
       name,
       shellPath: executablePath,
       shellArgs,
       cwd,
-      env,
+      env: Object.keys(env).length > 0 ? env : undefined,
       isTransient: true,
     })
 
@@ -196,8 +201,8 @@ export class ReplManager implements vscode.Disposable {
   }
 
   // Start a REPL instrumented for coverage (--code-coverage=user). Required before @coverage works.
-  async startReplWithCoverage() {
-    return this.startRepl(false, workspaceCwd(), true)
+  async startReplWithCoverage(channel = '') {
+    return this.startRepl(false, workspaceCwd(), true, channel)
   }
 
   async executeFileWithCoverage() {

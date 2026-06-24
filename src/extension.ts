@@ -36,6 +36,25 @@ function installCli(context: vscode.ExtensionContext) {
   }
 }
 
+// Prompt for the juliaup channel to launch a REPL with, prefilled from the last value used in this
+// workspace. Returns the (normalized) channel, '' for the default, or undefined if the user cancels.
+async function promptJuliaChannel(context: vscode.ExtensionContext) {
+  const key = 'julia.lastReplChannel'
+  const last = context.workspaceState.get<string>(key, '')
+  const input = await vscode.window.showInputBox({
+    title: 'Julia REPL channel',
+    prompt: 'juliaup channel (e.g. release, lts, 1.11, nightly). Leave empty for the default.',
+    placeHolder: 'release',
+    value: last,
+  })
+  if (input === undefined) {
+    return undefined // cancelled — don't start a REPL
+  }
+  const channel = input.trim().replace(/^\+/, '')
+  await context.workspaceState.update(key, channel)
+  return channel
+}
+
 export function activate(context: vscode.ExtensionContext) {
   const cellHighlighter = new CellHighlighter()
   const profiler = new ProfilerPanel(context)
@@ -50,8 +69,20 @@ export function activate(context: vscode.ExtensionContext) {
     registerUnicodeCompletionProvider(),
     registerSymbolIndexFeature(context),
     vscode.commands.registerCommand('julia.openRepl', () => repls.openRepl()),
-    vscode.commands.registerCommand('julia.startRepl', () => repls.startRepl()),
-    vscode.commands.registerCommand('julia.startReplWithCoverage', () => repls.startReplWithCoverage()),
+    vscode.commands.registerCommand('julia.startRepl', async () => {
+      const channel = await promptJuliaChannel(context)
+      if (channel === undefined) {
+        return
+      }
+      await repls.startRepl(false, undefined, false, channel)
+    }),
+    vscode.commands.registerCommand('julia.startReplWithCoverage', async () => {
+      const channel = await promptJuliaChannel(context)
+      if (channel === undefined) {
+        return
+      }
+      await repls.startReplWithCoverage(channel)
+    }),
     vscode.commands.registerCommand('language-julia.executeCodeBlockOrSelection', () => repls.executeCodeInRepl()),
     vscode.commands.registerCommand('language-julia.executeCodeBlockOrSelectionAndMove', () => repls.executeCodeInRepl(true)),
     vscode.commands.registerCommand('language-julia.executeCell', () => repls.executeCellInRepl()),
