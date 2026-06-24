@@ -21,13 +21,14 @@ import {
   chooseManifestName,
   findProjectFile,
   parseManifest,
+  parseProject,
   parseTomlSafely,
   resolvePackages,
   type ResolvedPackage,
 } from './symbolIndex/manifest'
 import { buildProbeArgs, parseProbeOutput, parseVersion, type ProbeResult } from './symbolIndex/probe'
 import { rankDefinitions, rankReferences, rankWorkspaceSymbols, type ClickedToken } from './symbolIndex/ranking'
-import { inScopeRoots, type Environment } from './symbolIndex/envScope'
+import { inScopeRoots, type Environment, type EnvPackage } from './symbolIndex/envScope'
 import { SymbolStore, type IndexedReference, type IndexedSymbol, type Pos, type Tier } from './symbolIndex/store'
 
 const IGNORED_DIRS = new Set(['.git', '.hg', '.svn', 'node_modules', '.vscode', '__pycache__'])
@@ -373,6 +374,7 @@ class SymbolIndexFeature {
     const packages: ResolvedPackage[] = []
     const environments: Environment[] = []
     const missing: { name: string; reason: string }[] = []
+    const pending: { env: Environment; ownUuid?: string; depUuids: string[] }[] = []
 
     for (const folder of folders) {
       const folderPath = folder.uri.fsPath
@@ -381,12 +383,28 @@ class SymbolIndexFeature {
         workspaceFiles.push({ file, root: nearestProjectDir(file, projectDirs, folderPath) })
       }
       for (const projectDir of projectDirs) {
-        const env = await this.resolveEnvironment(projectDir, depots, version, missing)
-        if (env) {
-          environments.push(env.environment)
-          packages.push(...env.packages)
+        const res = await this.resolveEnvironment(projectDir, depots, version, missing)
+        if (res) {
+          environments.push(res.environment)
+          packages.push(...res.packages)
+          pending.push({ env: res.environment, ownUuid: res.ownUuid, depUuids: res.depUuids })
         }
       }
+    }
+
+    // Resolve each env's declared deps/weakdeps (Project.toml) to already-indexed
+    // source roots, by uuid. Manifest packages win; workspace copies win over depot.
+    const rootByUuid = new Map<string, string>()
+    for (const p of packages) if (p.uuid) rootByUuid.set(p.uuid, path.resolve(p.sourceDir))
+    for (const { env, ownUuid } of pending) if (ownUuid) rootByUuid.set(ownUuid, path.resolve(env.projectDir))
+    for (const { env, depUuids } of pending) {
+      const declared = depUuids
+        .map((uuid): EnvPackage | undefined => {
+          const root = rootByUuid.get(uuid)
+          return root ? { uuid, root } : undefined
+        })
+        .filter((p): p is EnvPackage => p !== undefined)
+      if (declared.length) env.declaredPackages = declared
     }
 
     this.environments = environments
@@ -402,15 +420,22 @@ class SymbolIndexFeature {
     depots: string[],
     version: { major: number; minor: number } | undefined,
     missing: { name: string; reason: string }[],
-  ): Promise<{ environment: Environment; packages: ResolvedPackage[] } | undefined> {
+  ): Promise<{ environment: Environment; packages: ResolvedPackage[]; ownUuid?: string; depUuids: string[] } | undefined> {
     const names = (await readDirSafe(projectDir)).map((e) => e.name)
     const projectFile = findProjectFile(projectDir, names)
     if (!projectFile) return undefined
+    let info = { uuid: undefined as string | undefined, depUuids: [] as string[] }
+    try {
+      const proj = parseProject(parseTomlSafely(await fs.readFile(path.join(projectDir, projectFile), 'utf8')))
+      info = { uuid: proj.uuid, depUuids: proj.depUuids }
+    } catch {
+      /* unreadable/unparsable project file */
+    }
     const manifestName = chooseManifestName(names, projectFile, version)
     if (!manifestName) {
       // Project with no manifest: not instantiated here; its deps come from an
       // enclosing environment via the scope chain.
-      return { environment: { id: projectDir, projectDir, packages: [] }, packages: [] }
+      return { environment: { id: projectDir, projectDir, packages: [] }, packages: [], ownUuid: info.uuid, depUuids: info.depUuids }
     }
     try {
       const text = await fs.readFile(path.join(projectDir, manifestName), 'utf8')
@@ -420,10 +445,12 @@ class SymbolIndexFeature {
       return {
         environment: { id: projectDir, projectDir, packages: resolved.map((p) => ({ uuid: p.uuid, root: p.sourceDir })) },
         packages: resolved,
+        ownUuid: info.uuid,
+        depUuids: info.depUuids,
       }
     } catch (err) {
       this.output.appendLine(`Failed to read manifest in ${projectDir}: ${err instanceof Error ? err.message : err}`)
-      return { environment: { id: projectDir, projectDir, packages: [] }, packages: [] }
+      return { environment: { id: projectDir, projectDir, packages: [] }, packages: [], ownUuid: info.uuid, depUuids: info.depUuids }
     }
   }
 

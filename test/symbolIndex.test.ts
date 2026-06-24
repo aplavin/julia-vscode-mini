@@ -204,3 +204,31 @@ test('depot package file is scoped to the envs that reference it', () => {
   assert.ok(scope.has('/depot/Foo/v1'))
   assert.ok(!scope.has('/depot/Foo/v2'))
 })
+
+test('declaredPackages fill scope for deps/weakdeps absent from the manifest', () => {
+  const envs = [
+    {
+      id: 'pkg',
+      projectDir: '/ws/Pkg',
+      packages: [],
+      declaredPackages: [{ uuid: 'unitful', root: '/depot/Unitful/v1' }],
+    },
+  ]
+  const scope = inScopeRoots('/ws/Pkg/ext/UnitfulExt.jl', envs)
+  assert.ok(scope.has('/depot/Unitful/v1'))
+  assert.ok(scope.has('/ws/Pkg'))
+})
+
+test('manifest packages win over declaredPackages for the same uuid', () => {
+  const envs = [
+    {
+      id: 'pkg',
+      projectDir: '/ws/Pkg',
+      packages: [{ uuid: 'foo', root: '/depot/Foo/manifest' }],
+      declaredPackages: [{ uuid: 'foo', root: '/depot/Foo/declared' }],
+    },
+  ]
+  const scope = inScopeRoots('/ws/Pkg/src/Pkg.jl', envs)
+  assert.ok(scope.has('/depot/Foo/manifest'))
+  assert.ok(!scope.has('/depot/Foo/declared'))
+})

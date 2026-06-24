@@ -89,6 +89,29 @@ export function parseManifest(data: Record<string, unknown>): ManifestEntry[] {
   return entries
 }
 
+export interface ProjectInfo {
+  name?: string
+  uuid?: string
+  /** uuids declared in [deps] and [weakdeps] (values of the Name = "uuid" tables). */
+  depUuids: string[]
+}
+
+/** Parse a package Project.toml: own name/uuid and the declared dep/weakdep uuids. */
+export function parseProject(data: Record<string, unknown>): ProjectInfo {
+  const name = typeof data.name === 'string' ? data.name : undefined
+  const uuid = typeof data.uuid === 'string' ? data.uuid : undefined
+  const depUuids: string[] = []
+  for (const table of ['deps', 'weakdeps']) {
+    const t = data[table]
+    if (t && typeof t === 'object') {
+      for (const v of Object.values(t as Record<string, unknown>)) {
+        if (typeof v === 'string') depUuids.push(v)
+      }
+    }
+  }
+  return { name, uuid, depUuids }
+}
+
 /** Candidate package source dirs for a git-tree-sha1 entry, in resolution order. */
 export function packageSourceCandidates(
   name: string,

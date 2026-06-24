@@ -5,6 +5,7 @@ const path = require('node:path')
 const {
   chooseManifestName,
   parseManifest,
+  parseProject,
   parseTomlSafely,
   packageSourceCandidates,
   resolvePackages,
@@ -46,6 +47,35 @@ test('parseManifest reads format 1.0 (top-level) entries and skips meta keys', (
   const entries = parseManifest(data)
   assert.equal(entries.length, 1)
   assert.equal(entries[0].name, 'AxisAlgorithms')
+})
+
+test('parseProject reads name/uuid and unions [deps]+[weakdeps] uuids', () => {
+  const data = parseTomlSafely(
+    [
+      'name = "FlexiMaps"',
+      'uuid = "6394faf6-06db-4fa8-b750-35ccc60383f7"',
+      '[deps]',
+      'Accessors = "7d9f7c33-5ae7-4f3b-8dc6-eff91059b697"',
+      'DataPipes = "02685ad9-2d12-40c3-9f73-c6aeda6a7ff5"',
+      '[weakdeps]',
+      'Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"',
+      'AxisKeys = "94b1ba4f-4ee9-5380-92f1-94cde586c3c5"',
+    ].join('\n'),
+  )
+  const info = parseProject(data)
+  assert.equal(info.name, 'FlexiMaps')
+  assert.equal(info.uuid, '6394faf6-06db-4fa8-b750-35ccc60383f7')
+  assert.deepEqual(info.depUuids.sort(), [
+    '02685ad9-2d12-40c3-9f73-c6aeda6a7ff5',
+    '1986cc42-f94f-5a68-af5c-568840ba703d',
+    '7d9f7c33-5ae7-4f3b-8dc6-eff91059b697',
+    '94b1ba4f-4ee9-5380-92f1-94cde586c3c5',
+  ])
+})
+
+test('parseProject returns empty depUuids when no [deps]/[weakdeps]', () => {
+  const info = parseProject(parseTomlSafely(['name = "Bare"', 'uuid = "abc"'].join('\n')))
+  assert.deepEqual(info.depUuids, [])
 })
 
 test('packageSourceCandidates uses the verified depot slug', () => {

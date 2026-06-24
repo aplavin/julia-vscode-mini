@@ -20,6 +20,12 @@ export interface Environment {
   /** Absolute directory containing the env's Project/Manifest. */
   projectDir: string
   packages: EnvPackage[]
+  /**
+   * [deps]+[weakdeps] declared in this env's Project.toml, resolved to indexed
+   * roots by uuid. Admitted to scope only for uuids not already provided by a
+   * manifest in the chain (fills the sibling-env gap). One root per uuid.
+   */
+  declaredPackages?: EnvPackage[]
 }
 
 function isInside(parent: string, child: string): boolean {
@@ -49,6 +55,17 @@ export function inScopeRoots(filePath: string, environments: readonly Environmen
     for (const env of chain) {
       roots.add(path.resolve(env.projectDir))
       for (const pkg of env.packages) {
+        const key = pkg.uuid ?? pkg.root
+        if (!chosen.has(key)) {
+          chosen.add(key)
+          roots.add(path.resolve(pkg.root))
+        }
+      }
+    }
+    // Fallback: declared deps/weakdeps not provided by any manifest in the chain,
+    // resolved by uuid against the indexed set during discovery.
+    for (const env of chain) {
+      for (const pkg of env.declaredPackages ?? []) {
         const key = pkg.uuid ?? pkg.root
         if (!chosen.has(key)) {
           chosen.add(key)
