@@ -1,10 +1,14 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { extractSymbols, lineStarts, positionAt } = require('../dist/symbolIndex/lezerSymbols')
+const { extractReferences, extractSymbols, lineStarts, positionAt } = require('../dist/symbolIndex/lezerSymbols')
 
 const find = (syms, name) => syms.find((s) => s.name === name)
 const all = (syms, name) => syms.filter((s) => s.name === name)
+const refTexts = (src, name, namespace = 'value') =>
+  extractReferences(src)
+    .filter((r) => r.name === name && r.namespace === namespace)
+    .map((r) => src.slice(r.range.from, r.range.to))
 
 test('extracts modules, long/short functions, macros, types and consts', () => {
   const src = [
@@ -25,6 +29,7 @@ test('extracts modules, long/short functions, macros, types and consts', () => {
   assert.equal(find(syms, 'bar').kind, 'function')
   assert.equal(find(syms, 'mac').kind, 'macro')
   assert.equal(find(syms, 'mac').qualifiedName, '@mac')
+  assert.equal(find(syms, 'mac').namespace, 'macro')
   assert.equal(find(syms, 'S').kind, 'struct')
   assert.equal(find(syms, 'MS').kind, 'mutable struct')
   assert.equal(find(syms, 'AT').kind, 'abstract type')
@@ -32,6 +37,14 @@ test('extracts modules, long/short functions, macros, types and consts', () => {
   assert.equal(find(syms, 'K').kind, 'const')
   // all are nested inside module M
   assert.deepEqual(find(syms, 'foo').containerPath, ['M'])
+})
+
+test('simple top-level globals are indexed as symbols', () => {
+  const syms = extractSymbols('x = 1\ny += 2\nglobal z = 3\nfunction f()\n  local_only = 4\nend')
+  assert.equal(find(syms, 'x').kind, 'global')
+  assert.equal(find(syms, 'z').kind, 'global')
+  assert.equal(find(syms, 'y'), undefined)
+  assert.equal(find(syms, 'local_only'), undefined)
 })
 
 test('bare-name long function (no parens)', () => {
@@ -100,6 +113,51 @@ test('const short-form function is not double-counted', () => {
   const syms = extractSymbols('const f(x) = x')
   assert.equal(all(syms, 'f').length, 1)
   assert.equal(find(syms, 'f').kind, 'const')
+})
+
+test('references include expression uses but skip labels, bindings, imports, exports, strings and comments', () => {
+  const src = [
+    'foo(bar=1, baz; kw=x)',
+    '(; ntfield=1, shorthand)',
+    'function f(arg; key=1)',
+    '  y = arg + key',
+    '  for z in xs',
+    '    y += z',
+    '  end',
+    '  y',
+    'end',
+    'import M: foo',
+    'export baz',
+    '"foo" # foo',
+  ].join('\n')
+  assert.deepEqual(refTexts(src, 'foo'), ['foo'])
+  assert.deepEqual(refTexts(src, 'bar'), [])
+  assert.deepEqual(refTexts(src, 'kw'), [])
+  assert.deepEqual(refTexts(src, 'x'), ['x'])
+  assert.deepEqual(refTexts(src, 'ntfield'), [])
+  assert.deepEqual(refTexts(src, 'shorthand'), [])
+  assert.deepEqual(refTexts(src, 'arg'), ['arg'])
+  assert.deepEqual(refTexts(src, 'key'), ['key'])
+  assert.deepEqual(refTexts(src, 'z'), ['z'])
+  assert.deepEqual(refTexts(src, 'xs'), ['xs'])
+})
+
+test('references include bare and dotted leaves', () => {
+  const src = 'M.foo\nM.foo(x)\nmap(M.foo, xs)\nobj.foo = foo'
+  assert.deepEqual(refTexts(src, 'foo'), ['foo', 'foo', 'foo', 'foo', 'foo'])
+})
+
+test('macro references are distinct and highlight the whole macro token', () => {
+  const src = '@foo x\nfoo(x)\nmacro foo(x) end'
+  assert.deepEqual(refTexts(src, 'foo', 'macro'), ['@foo'])
+  assert.deepEqual(refTexts(src, 'foo', 'value'), ['foo'])
+  assert.equal(find(extractSymbols(src), 'foo').namespace, 'macro')
+})
+
+test('operator references include infix and explicit operator values but skip definitions', () => {
+  const src = 'a + b\nx == y\n+(a,b) = a\nBase.:+(a,b)'
+  assert.deepEqual(refTexts(src, '+'), ['+', '+'])
+  assert.deepEqual(refTexts(src, '=='), ['=='])
 })
 
 test('positionAt converts offsets to 0-based line/character', () => {

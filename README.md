@@ -9,6 +9,7 @@ Julia Mini gives VS Code the core Julia editing pieces without keeping Julia bus
 - syntax highlighting
 - Unicode completions like `\alpha`
 - native Go to Definition across your workspace and installed dependencies
+- parser-based Find All References across your workspace
 - profiling with `@profview` and `@profview_allocs`
 - REPL-oriented code execution
 

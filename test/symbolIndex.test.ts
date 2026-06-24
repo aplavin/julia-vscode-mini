@@ -2,12 +2,13 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const { SymbolStore } = require('../dist/symbolIndex/store')
-const { rankDefinitions, rankWorkspaceSymbols } = require('../dist/symbolIndex/ranking')
+const { rankDefinitions, rankReferences, rankWorkspaceSymbols } = require('../dist/symbolIndex/ranking')
 const { envChain, inScopeRoots } = require('../dist/symbolIndex/envScope')
 
 const sym = (over) => ({
   name: 'x',
   qualifiedName: 'x',
+  namespace: 'value',
   kind: 'function',
   container: [],
   file: '/a.jl',
@@ -21,6 +22,17 @@ const sym = (over) => ({
   ...over,
 })
 
+const ref = (over) => ({
+  name: 'x',
+  namespace: 'value',
+  file: '/a.jl',
+  root: '/root',
+  tier: 'workspace',
+  start: { line: 0, character: 0 },
+  end: { line: 0, character: 1 },
+  ...over,
+})
+
 // ---- store ----
 
 test('store indexes, looks up, and removes by file', () => {
@@ -31,6 +43,33 @@ test('store indexes, looks up, and removes by file', () => {
   store.removeFile('/a.jl')
   assert.equal(store.definitionsFor('foo').length, 1)
   assert.equal(store.definitionsFor('foo')[0].file, '/b.jl')
+})
+
+test('store keeps macro and value namespaces separate', () => {
+  const store = new SymbolStore()
+  store.setFile('/a.jl', [
+    sym({ name: 'foo', namespace: 'value', file: '/a.jl' }),
+    sym({ name: 'foo', namespace: 'macro', qualifiedName: '@foo', file: '/a.jl' }),
+  ])
+  assert.equal(store.definitionsFor('foo', 'value').length, 1)
+  assert.equal(store.definitionsFor('foo', 'macro').length, 1)
+  assert.equal(store.definitionsFor('foo', 'macro')[0].qualifiedName, '@foo')
+})
+
+test('store indexes references, including files without definitions', () => {
+  const store = new SymbolStore()
+  store.setFile('/a.jl', [], [ref({ name: 'foo', file: '/a.jl' })])
+  store.setFile('/b.jl', [sym({ name: 'foo', file: '/b.jl' })], [ref({ name: 'foo', file: '/b.jl' })])
+  assert.deepEqual(
+    store.referencesFor('foo').map((r) => r.file),
+    ['/a.jl', '/b.jl'],
+  )
+  assert.ok(store.hasFile('/a.jl'))
+  store.removeFile('/a.jl')
+  assert.deepEqual(
+    store.referencesFor('foo').map((r) => r.file),
+    ['/b.jl'],
+  )
 })
 
 test('store globalSymbols yields only module-level symbols', () => {
@@ -52,16 +91,19 @@ test('store snapshot/load round-trips', () => {
 test('store removeRoot drops all files under a root', () => {
   const store = new SymbolStore()
   store.setFile('/pkg/src/A.jl', [sym({ name: 'a', file: '/pkg/src/A.jl', root: '/pkg' })])
-  store.setFile('/ws/x.jl', [sym({ name: 'b', file: '/ws/x.jl', root: '/ws' })])
+  store.setFile('/pkg/src/B.jl', [], [ref({ name: 'a', file: '/pkg/src/B.jl', root: '/pkg' })])
+  store.setFile('/ws/x.jl', [sym({ name: 'b', file: '/ws/x.jl', root: '/ws' })], [ref({ name: 'b', file: '/ws/x.jl', root: '/ws' })])
   store.removeRoot('/pkg')
   assert.equal(store.definitionsFor('a').length, 0)
+  assert.equal(store.referencesFor('a').length, 0)
   assert.equal(store.definitionsFor('b').length, 1)
+  assert.equal(store.referencesFor('b').length, 1)
 })
 
 // ---- ranking: definitions ----
 
 test('exact qualified match ranks first', () => {
-  const token = { name: 'foo', full: 'Base.foo', qualifier: 'Base' }
+  const token = { name: 'foo', namespace: 'value', full: 'Base.foo', qualifier: 'Base' }
   const candidates = [
     sym({ name: 'foo', qualifiedName: 'foo', tier: 'workspace', file: '/w.jl' }),
     sym({ name: 'foo', qualifiedName: 'Base.foo', tier: 'base', file: '/base.jl' }),
@@ -71,14 +113,14 @@ test('exact qualified match ranks first', () => {
 })
 
 test('unqualified click still matches a qualified method', () => {
-  const token = { name: 'foo', full: 'foo' }
+  const token = { name: 'foo', namespace: 'value', full: 'foo' }
   const candidates = [sym({ name: 'foo', qualifiedName: 'Base.foo', tier: 'base' })]
   const ranked = rankDefinitions(token, candidates, '/cur.jl', 10)
   assert.equal(ranked.length, 1)
 })
 
 test('workspace ranks before package before stdlib', () => {
-  const token = { name: 'foo', full: 'foo' }
+  const token = { name: 'foo', namespace: 'value', full: 'foo' }
   const candidates = [
     sym({ name: 'foo', qualifiedName: 'foo', tier: 'stdlib', file: '/s.jl' }),
     sym({ name: 'foo', qualifiedName: 'foo', tier: 'package', file: '/p.jl' }),
@@ -89,7 +131,7 @@ test('workspace ranks before package before stdlib', () => {
 })
 
 test('same-file definition is boosted above other tiers', () => {
-  const token = { name: 'foo', full: 'foo' }
+  const token = { name: 'foo', namespace: 'value', full: 'foo' }
   const candidates = [
     sym({ name: 'foo', qualifiedName: 'foo', tier: 'workspace', file: '/other.jl' }),
     sym({ name: 'foo', qualifiedName: 'foo', tier: 'base', file: '/cur.jl', global: false }),
@@ -99,9 +141,23 @@ test('same-file definition is boosted above other tiers', () => {
 })
 
 test('rankDefinitions caps results', () => {
-  const token = { name: 'foo', full: 'foo' }
+  const token = { name: 'foo', namespace: 'value', full: 'foo' }
   const candidates = Array.from({ length: 10 }, (_, i) => sym({ name: 'foo', file: `/f${i}.jl` }))
   assert.equal(rankDefinitions(token, candidates, '/cur.jl', 3).length, 3)
+})
+
+test('rankReferences sorts current file first, merges lines, and caps', () => {
+  const candidates = [
+    ref({ file: '/b.jl', start: { line: 2, character: 3 }, end: { line: 2, character: 4 } }),
+    ref({ file: '/cur.jl', start: { line: 5, character: 9 }, end: { line: 5, character: 10 } }),
+    ref({ file: '/cur.jl', start: { line: 5, character: 20 }, end: { line: 5, character: 21 } }),
+    ref({ file: '/a.jl', start: { line: 1, character: 0 }, end: { line: 1, character: 1 } }),
+  ]
+  const ranked = rankReferences(candidates, '/cur.jl', 3)
+  assert.deepEqual(
+    ranked.map((r) => `${r.file}:${r.start.line}:${r.start.character}`),
+    ['/cur.jl:5:9', '/a.jl:1:0', '/b.jl:2:3'],
+  )
 })
 
 // ---- ranking: workspace symbols ----

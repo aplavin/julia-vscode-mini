@@ -8,7 +8,15 @@ import { promises as fs, statSync } from 'fs'
 import * as path from 'path'
 import * as vscode from 'vscode'
 
-import { extractSymbols, lineStarts, positionAt, type RawSymbol, type SymbolKind } from './symbolIndex/lezerSymbols'
+import {
+  extractIndex,
+  extractSymbols,
+  lineStarts,
+  positionAt,
+  type RawReference,
+  type RawSymbol,
+  type SymbolKind,
+} from './symbolIndex/lezerSymbols'
 import {
   chooseManifestName,
   findProjectFile,
@@ -18,16 +26,16 @@ import {
   type ResolvedPackage,
 } from './symbolIndex/manifest'
 import { buildProbeArgs, parseProbeOutput, parseVersion, type ProbeResult } from './symbolIndex/probe'
-import { rankDefinitions, rankWorkspaceSymbols, type ClickedToken } from './symbolIndex/ranking'
+import { rankDefinitions, rankReferences, rankWorkspaceSymbols, type ClickedToken } from './symbolIndex/ranking'
 import { inScopeRoots, type Environment } from './symbolIndex/envScope'
-import { SymbolStore, type IndexedSymbol, type Pos, type Tier } from './symbolIndex/store'
+import { SymbolStore, type IndexedReference, type IndexedSymbol, type Pos, type Tier } from './symbolIndex/store'
 
 const IGNORED_DIRS = new Set(['.git', '.hg', '.svn', 'node_modules', '.vscode', '__pycache__'])
 const SELECTOR: vscode.DocumentSelector = [
   { language: 'julia', scheme: 'file' },
   { language: 'julia', scheme: 'untitled' },
 ]
-const CACHE_SCHEMA = 1
+const CACHE_SCHEMA = 2
 const BATCH = 40
 const PROBE_TIMEOUT_MS = 30_000
 const WORKSPACE_SYMBOL_CAP = 500
@@ -41,6 +49,7 @@ const KIND_MAP: Record<SymbolKind, vscode.SymbolKind> = {
   'abstract type': vscode.SymbolKind.Class,
   'primitive type': vscode.SymbolKind.Class,
   const: vscode.SymbolKind.Constant,
+  global: vscode.SymbolKind.Variable,
 }
 
 // ---- small fs helpers -------------------------------------------------------
@@ -105,6 +114,7 @@ function toIndexed(raw: RawSymbol, file: string, root: string, tier: Tier, start
   return {
     name: raw.name,
     qualifiedName: raw.qualifiedName,
+    namespace: raw.namespace,
     kind: raw.kind,
     container: raw.containerPath,
     file,
@@ -118,9 +128,34 @@ function toIndexed(raw: RawSymbol, file: string, root: string, tier: Tier, start
   }
 }
 
-function parseFile(text: string, file: string, root: string, tier: Tier): IndexedSymbol[] {
+function toIndexedReference(raw: RawReference, file: string, root: string, tier: Tier, starts: number[]): IndexedReference {
+  const at = (offset: number): Pos => positionAt(offset, starts)
+  return {
+    name: raw.name,
+    namespace: raw.namespace,
+    file,
+    root: path.resolve(root),
+    tier,
+    start: at(raw.range.from),
+    end: at(raw.range.to),
+  }
+}
+
+interface ParsedFile {
+  symbols: IndexedSymbol[]
+  references: IndexedReference[]
+}
+
+function parseFile(text: string, file: string, root: string, tier: Tier, includeReferences = false): ParsedFile {
   const starts = lineStarts(text)
-  return extractSymbols(text).map((raw) => toIndexed(raw, file, root, tier, starts))
+  if (!includeReferences) {
+    return { symbols: extractSymbols(text).map((raw) => toIndexed(raw, file, root, tier, starts)), references: [] }
+  }
+  const parsed = extractIndex(text)
+  return {
+    symbols: parsed.symbols.map((raw) => toIndexed(raw, file, root, tier, starts)),
+    references: parsed.references.map((raw) => toIndexedReference(raw, file, root, tier, starts)),
+  }
 }
 
 const toRange = (a: Pos, b: Pos) => new vscode.Range(a.line, a.character, b.line, b.character)
@@ -130,22 +165,23 @@ function clickedToken(document: vscode.TextDocument, position: vscode.Position):
   const range = document.getWordRangeAtPosition(position, /@?[\p{L}\p{N}_!]+/u)
   if (!range) {
     // Operator definitions are indexed by their symbol (e.g. `==`, `+`, `<:`).
-    const opRange = document.getWordRangeAtPosition(position, /[-+*/\\^%<>=!~&|÷×]+|<:|>:|::/u)
+    const opRange = document.getWordRangeAtPosition(position, /<:|>:|::|[-+*/\\^%<>=!~&|÷×]+/u)
     if (!opRange) return undefined
     const op = document.getText(opRange)
-    return { name: op, full: op }
+    return { name: op, namespace: 'value', full: op }
   }
   let word = document.getText(range)
-  if (word.startsWith('@')) word = word.slice(1)
+  const namespace = word.startsWith('@') ? 'macro' : 'value'
+  if (namespace === 'macro') word = word.slice(1)
   if (!word) return undefined
   const before = document.getText(new vscode.Range(new vscode.Position(range.start.line, 0), range.start))
   const m = /([\p{L}\p{N}_.!]+)\.\s*$/u.exec(before)
-  if (m) {
+  if (namespace === 'value' && m) {
     const chain = m[1]
     const qualifier = chain.includes('.') ? chain.slice(chain.lastIndexOf('.') + 1) : chain
-    return { name: word, full: `${chain}.${word}`, qualifier }
+    return { name: word, namespace, full: `${chain}.${word}`, qualifier }
   }
-  return { name: word, full: word }
+  return { name: word, namespace, full: namespace === 'macro' ? `@${word}` : word }
 }
 
 // ---- the feature ------------------------------------------------------------
@@ -173,9 +209,9 @@ class SymbolIndexFeature {
   private baseRoots: string[] = []
   private stdlibDir: string | undefined
 
-  private setTracked(file: string, symbols: IndexedSymbol[]): void {
+  private setTracked(file: string, symbols: IndexedSymbol[], references: IndexedReference[] = []): void {
     this.touched.add(file)
-    this.store.setFile(file, symbols)
+    this.store.setFile(file, symbols, references)
   }
   private loadTracked(bucket: Record<string, IndexedSymbol[]>): void {
     for (const file of Object.keys(bucket)) this.touched.add(file)
@@ -190,8 +226,8 @@ class SymbolIndexFeature {
   private config() {
     return vscode.workspace.getConfiguration('julia')
   }
-  private get maxDefinitionResults(): number {
-    return this.config().get<number>('symbolIndex.maxDefinitionResults')!
+  private get maxNavigationResults(): number {
+    return this.config().get<number>('symbolIndex.maxNavigationResults')!
   }
   private get juliaSourceRoots(): string[] {
     return this.config().get<string[]>('symbolIndex.juliaSourceRoots')!
@@ -208,6 +244,9 @@ class SymbolIndexFeature {
       }),
       vscode.languages.registerDefinitionProvider(SELECTOR, {
         provideDefinition: (doc, pos) => this.provideDefinition(doc, pos),
+      }),
+      vscode.languages.registerReferenceProvider(SELECTOR, {
+        provideReferences: (doc, pos, context) => this.provideReferences(doc, pos, context),
       }),
     ]
   }
@@ -258,15 +297,41 @@ class SymbolIndexFeature {
     // Loose files at the workspace-folder root (the top of the env chain) are in scope too.
     const folder = vscode.workspace.getWorkspaceFolder(document.uri)
     const folderRoot = folder ? path.resolve(folder.uri.fsPath) : undefined
-    const candidates = this.store.definitionsFor(token.name).filter((c) => {
+    const candidates = this.store.definitionsFor(token.name, token.namespace).filter((c) => {
       if (scope === null) return true
       if (c.tier === 'base' || c.tier === 'stdlib' || c.file === currentFile) return true
       if (c.tier === 'workspace' && folderRoot && c.root === folderRoot) return true
       return scope.has(c.root)
     })
-    return rankDefinitions(token, candidates, currentFile, this.maxDefinitionResults).map(
+    return rankDefinitions(token, candidates, currentFile, this.maxNavigationResults).map(
       (s) => new vscode.Location(vscode.Uri.file(s.file), toRange(s.nameStart, s.nameEnd)),
     )
+  }
+
+  private provideReferences(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    context: vscode.ReferenceContext,
+  ): vscode.Location[] {
+    const token = clickedToken(document, position)
+    if (!token) return []
+    const currentFile = document.uri.fsPath
+    const refs = this.store.referencesFor(token.name, token.namespace).filter((r) => r.tier === 'workspace')
+    const declarations = context.includeDeclaration
+      ? this.store
+          .definitionsFor(token.name, token.namespace)
+          .filter((s) => s.tier === 'workspace')
+          .map((s) => ({ file: s.file, start: s.nameStart, end: s.nameEnd }))
+      : []
+    const locations = rankReferences(
+      [
+        ...refs.map((r) => ({ file: r.file, start: r.start, end: r.end })),
+        ...declarations,
+      ],
+      currentFile,
+      this.maxNavigationResults,
+    )
+    return locations.map((loc) => new vscode.Location(vscode.Uri.file(loc.file), toRange(loc.start, loc.end)))
   }
 
   // ---- probe ----
@@ -410,7 +475,7 @@ class SymbolIndexFeature {
         symbols = cached
       } else {
         try {
-          symbols = parseFile(await fs.readFile(file, 'utf8'), file, root, tier)
+          symbols = parseFile(await fs.readFile(file, 'utf8'), file, root, tier).symbols
         } catch {
           continue
         }
@@ -441,7 +506,8 @@ class SymbolIndexFeature {
         const stat = statSync(file)
         const meta = wsCache[file]
         if (!meta || meta.mtime !== stat.mtimeMs || meta.size !== stat.size || !this.store.hasFile(file)) {
-          this.setTracked(file, parseFile(await fs.readFile(file, 'utf8'), file, root, 'workspace'))
+          const parsed = parseFile(await fs.readFile(file, 'utf8'), file, root, 'workspace', true)
+          this.setTracked(file, parsed.symbols, parsed.references)
           wsCache[file] = { mtime: stat.mtimeMs, size: stat.size }
         } else {
           this.touched.add(file) // unchanged but still current — keep it from being pruned
@@ -583,7 +649,8 @@ class SymbolIndexFeature {
       const classified = this.classifyFile(file)
       if (!classified) return
       try {
-        this.store.setFile(file, parseFile(await fs.readFile(file, 'utf8'), file, classified.root, classified.tier))
+        const parsed = parseFile(await fs.readFile(file, 'utf8'), file, classified.root, classified.tier, classified.tier === 'workspace')
+        this.store.setFile(file, parsed.symbols, parsed.references)
       } catch {
         /* ignore */
       }

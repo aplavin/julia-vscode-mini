@@ -2,13 +2,15 @@
 // Source priority workspace > package > stdlib > base; exact/qualified matches
 // outrank unqualified; same-file definitions are boosted.
 
-import type { IndexedSymbol, Tier } from './store'
+import type { SymbolNamespace } from './lezerSymbols'
+import type { IndexedSymbol, Pos, Tier } from './store'
 
 const TIER_BONUS: Record<Tier, number> = { workspace: 400, package: 300, stdlib: 200, base: 100 }
 
 export interface ClickedToken {
   /** Bare leaf name, e.g. `foo` for a click on `Base.foo`. */
   name: string
+  namespace: SymbolNamespace
   /** Full clicked text, e.g. `Base.foo` (equals `name` when unqualified). */
   full: string
   /** Namespace before the last dot, e.g. `Base` (undefined when unqualified). */
@@ -70,4 +72,39 @@ export function rankWorkspaceSymbols(query: string, symbols: Iterable<IndexedSym
     .sort((a, b) => b.score - a.score || a.s.name.localeCompare(b.s.name))
     .slice(0, cap)
     .map((x) => x.s)
+}
+
+export interface ReferenceCandidate {
+  file: string
+  start: Pos
+  end: Pos
+}
+
+export function rankReferences(
+  candidates: readonly ReferenceCandidate[],
+  currentFile: string,
+  cap: number,
+): ReferenceCandidate[] {
+  const sorted = [...candidates].sort((a, b) => {
+    const aCurrent = a.file === currentFile
+    const bCurrent = b.file === currentFile
+    if (aCurrent !== bCurrent) return aCurrent ? -1 : 1
+    return (
+      a.file.localeCompare(b.file) ||
+      a.start.line - b.start.line ||
+      a.start.character - b.start.character ||
+      a.end.line - b.end.line ||
+      a.end.character - b.end.character
+    )
+  })
+  const out: ReferenceCandidate[] = []
+  const seenLines = new Set<string>()
+  for (const loc of sorted) {
+    const key = `${loc.file}:${loc.start.line}`
+    if (seenLines.has(key)) continue
+    seenLines.add(key)
+    out.push(loc)
+    if (out.length >= cap) break
+  }
+  return out
 }

@@ -26,6 +26,7 @@
     "profiling",
     "unicode",
     "go to definition",
+    "find references",
     "navigation",
     "cli",
     "lightweight"
@@ -148,7 +149,7 @@
         "julia.symbolIndex.enable": {
           "type": "boolean",
           "default": true,
-          "description": "Enable the parser-based symbol index (Outline, workspace symbols, Go to Definition)."
+          "description": "Enable the parser-based symbol index (Outline, workspace symbols, Go to Definition, Find References)."
         },
         "julia.symbolIndex.juliaSourceRoots": {
           "type": "array",
@@ -158,10 +159,10 @@
           },
           "description": "Explicit Base/stdlib source roots to index. Used as a fallback/escape hatch when the Julia metadata probe cannot locate them."
         },
-        "julia.symbolIndex.maxDefinitionResults": {
+        "julia.symbolIndex.maxNavigationResults": {
           "type": "number",
           "default": 100,
-          "description": "Maximum number of ranked locations returned for Go to Definition."
+          "description": "Maximum number of locations returned for Go to Definition and Find References."
         }
       }
     },
