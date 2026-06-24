@@ -5,7 +5,7 @@ using Profile
 using REPL
 using Sockets
 
-export @profview, @profview_allocs, view_profile, view_profile_allocs
+export @profview, @profview_allocs, view_profile, view_profile_allocs, @coverage
 
 const conn = Ref{Union{Nothing,IO}}(nothing)
 const session_id = Ref("")
@@ -432,6 +432,84 @@ macro profview_allocs(ex, args...)
     end
 end
 
+# ---- Code coverage (Julia >= 1.11) -----------------------------------------------------
+# Show line coverage for arbitrary code run in the REPL. We NEVER call jl_clear_coverage_data
+# (it has an off-by-one undercount bug: it zeroes the per-line sentinel baseline that the
+# inlined counter never restores). Instead we snapshot the cumulative in-memory counters
+# before and after the expression and report the per-call delta; the +1 baseline cancels.
+
+coverage_active() = Base.JLOptions().code_coverage != 0
+
+# Current in-memory per-line execution counts, as Dict{file => Dict{line => count}}.
+function coverage_snapshot()
+    lcov = tempname() * ".info"   # ".info" => jl_write_coverage_data emits LCOV (not per-file .cov)
+    @ccall jl_write_coverage_data(lcov::Cstring)::Cvoid
+    data = read(lcov, String)
+    rm(lcov; force=true)
+    counts = Dict{String,Dict{Int,Int}}()
+    current = ""
+    for line in split(data, '\n')
+        if startswith(line, "SF:")
+            current = String(SubString(line, 4))
+            counts[current] = Dict{Int,Int}()
+        elseif startswith(line, "DA:")
+            m = match(r"^DA:(\d+),(\d+)$", line)
+            m === nothing || (counts[current][parse(Int, m.captures[1])] = parse(Int, m.captures[2]))
+        end
+    end
+    return counts
+end
+
+# Workspace roots (set by the extension on the coverage REPL) so we only report — and only pay
+# to serialize — files under the workspace, not the hundreds of instrumented dependency files.
+function coverage_roots()
+    raw = get(ENV, "JULIA_VSCODE_COVERAGE_ROOTS", "")
+    return [realpath_safe(r) for r in split(raw, '\n') if !isempty(r)]
+end
+
+isunder(p::AbstractString, root::AbstractString) = p == root || startswith(p, rstrip(root, '/') * '/')
+
+# Per-call delta for every real on-disk workspace file: all instrumented lines with
+# (after - before) counts. Sent as {path => [[line, count], ...]} (count>0 ran this call,
+# count==0 did not). When no roots are configured, all real on-disk files are included.
+function coverage_delta(before, after)
+    roots = coverage_roots()
+    result = Dict{String,Any}()
+    for (file, after_lines) in after
+        (isabspath(file) && isfile(file)) || continue
+        if !isempty(roots)
+            rp = realpath_safe(file)
+            any(root -> isunder(rp, root), roots) || continue
+        end
+        before_lines = get(before, file, Dict{Int,Int}())
+        result[file] = [(line, count - get(before_lines, line, 0)) for (line, count) in after_lines]
+    end
+    return result
+end
+
+# Run `ex` exactly as the REPL would (top-level in Main, softscope) bracketed by snapshots;
+# emit the per-call delta even if `ex` throws. Returns the expression's value.
+function run_with_coverage(ex)
+    if VERSION < v"1.11"
+        send_warning("Code coverage requires Julia 1.11 or newer.")
+        return Core.eval(Main, REPL.softscope(ex))
+    end
+    if !coverage_active()
+        send_warning("This REPL was not started with coverage. Use the \"Julia: Start REPL with Coverage\" command.")
+        return Core.eval(Main, REPL.softscope(ex))
+    end
+    before = coverage_snapshot()
+    try
+        return Core.eval(Main, REPL.softscope(ex))
+    finally
+        send_event("coverage"; data=coverage_delta(before, coverage_snapshot()))
+    end
+end
+
+macro coverage(ex)
+    return :(run_with_coverage($(QuoteNode(ex))))
+end
+
 function memory_size(size)
     prefixes = ("bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
     value = Float64(size)
@@ -541,7 +619,7 @@ end
 
 function install_names()
     Core.eval(Main, quote
-        using .JuliaVSCodeRuntime: @profview, @profview_allocs, view_profile, view_profile_allocs
+        using .JuliaVSCodeRuntime: @profview, @profview_allocs, view_profile, view_profile_allocs, @coverage
 
         function _vscode_eval(filename, line, column, code; softscope=true, mod=Main)
             JuliaVSCodeRuntime.eval_code(code, filename, line, column; softscope=softscope, mod=mod)

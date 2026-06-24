@@ -1,6 +1,7 @@
 import * as fs from 'fs'
 import * as vscode from 'vscode'
 import { CellHighlighter } from './cellHighlighter'
+import { CoverageView } from './coverage'
 import { ProfilerPanel } from './profilerPanel'
 import { ReplManager } from './replManager'
 import { registerUnicodeCompletionProvider } from './unicodeCompletionProvider'
@@ -38,21 +39,26 @@ function installCli(context: vscode.ExtensionContext) {
 export function activate(context: vscode.ExtensionContext) {
   const cellHighlighter = new CellHighlighter()
   const profiler = new ProfilerPanel(context)
-  const repls = new ReplManager(context, profiler)
+  const coverage = new CoverageView()
+  const repls = new ReplManager(context, profiler, coverage)
 
   context.subscriptions.push(
     cellHighlighter,
     profiler,
+    coverage,
     repls,
     registerUnicodeCompletionProvider(),
     registerSymbolIndexFeature(context),
     vscode.commands.registerCommand('julia.openRepl', () => repls.openRepl()),
     vscode.commands.registerCommand('julia.startRepl', () => repls.startRepl()),
+    vscode.commands.registerCommand('julia.startReplWithCoverage', () => repls.startReplWithCoverage()),
     vscode.commands.registerCommand('language-julia.executeCodeBlockOrSelection', () => repls.executeCodeInRepl()),
     vscode.commands.registerCommand('language-julia.executeCodeBlockOrSelectionAndMove', () => repls.executeCodeInRepl(true)),
     vscode.commands.registerCommand('language-julia.executeCell', () => repls.executeCellInRepl()),
     vscode.commands.registerCommand('language-julia.executeCellAndMove', () => repls.executeCellInRepl(true)),
     vscode.commands.registerCommand('language-julia.executeFile', () => repls.executeFileInRepl()),
+    vscode.commands.registerCommand('language-julia.executeFileWithCoverage', () => repls.executeFileWithCoverage()),
+    vscode.commands.registerCommand('language-julia.executeCodeWithCoverage', () => repls.executeCodeWithCoverage()),
     vscode.commands.registerCommand('julia.openProfiler', () => profiler.showLatest()),
     vscode.commands.registerCommand('julia.clearProfileHeat', () => profiler.clearHeat()),
     vscode.commands.registerCommand('julia.installCli', () => installCli(context))

@@ -91,6 +91,10 @@
         "title": "Julia: Start REPL"
       },
       {
+        "command": "julia.startReplWithCoverage",
+        "title": "Julia: Start REPL with Coverage"
+      },
+      {
         "command": "language-julia.executeCodeBlockOrSelection",
         "title": "Julia: Execute Code in REPL"
       },
@@ -109,6 +113,14 @@
       {
         "command": "language-julia.executeFile",
         "title": "Julia: Execute File in REPL"
+      },
+      {
+        "command": "language-julia.executeFileWithCoverage",
+        "title": "Julia: Execute File in REPL with Coverage"
+      },
+      {
+        "command": "language-julia.executeCodeWithCoverage",
+        "title": "Julia: Execute Code in REPL with Coverage"
       },
       {
         "command": "julia.openProfiler",

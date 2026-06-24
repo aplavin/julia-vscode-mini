@@ -7,6 +7,7 @@ export interface EventSocketHandlers {
   onConnected?: () => void
   onWarning?: (message: string) => void
   onProfile?: (event: WireEvent) => void
+  onCoverage?: (event: WireEvent) => void
   // `output` / `evaldone` (and any other non-builtin event) — used by the CLI relay.
   onJuliaEvent?: (event: WireEvent) => void
   onInvalid?: (line: string) => void
@@ -91,6 +92,11 @@ export class EventSocketServer {
       case 'profile':
         if (event.data) {
           this.handlers.onProfile?.(event)
+        }
+        return
+      case 'coverage':
+        if (event.data) {
+          this.handlers.onCoverage?.(event)
         }
         return
       case 'output':

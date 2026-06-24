@@ -15,7 +15,8 @@ import {
 import { EventSocketServer } from './eventSocketServer'
 import { cliSocketPath, generatePipeName } from './paths'
 import { ProfilerPanel } from './profilerPanel'
-import { ProfileNode } from './types'
+import { CoverageView } from './coverage'
+import { CoverageData, ProfileNode } from './types'
 import { juliaArgsFromConfig, workspaceCwd } from './util'
 
 interface ReplSession {
@@ -24,6 +25,7 @@ interface ReplSession {
   pipeName: string
   terminal: vscode.Terminal
   eventServer: EventSocketServer
+  coverage: boolean
 }
 
 export class ReplManager implements vscode.Disposable {
@@ -34,7 +36,8 @@ export class ReplManager implements vscode.Disposable {
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly profiler: ProfilerPanel
+    private readonly profiler: ProfilerPanel,
+    private readonly coverage: CoverageView
   ) {
     this.output = vscode.window.createOutputChannel('Julia')
     this.disposables.push(
@@ -66,9 +69,9 @@ export class ReplManager implements vscode.Disposable {
     return this.startRepl()
   }
 
-  async startRepl(preserveFocus = false, cwd: string | vscode.Uri | undefined = workspaceCwd()) {
+  async startRepl(preserveFocus = false, cwd: string | vscode.Uri | undefined = workspaceCwd(), coverage = false) {
     const id = crypto.randomUUID()
-    const name = `Julia REPL ${this.sessions.length + 1}`
+    const name = `Julia REPL ${this.sessions.length + 1}${coverage ? ' (coverage)' : ''}`
     const pipeName = generatePipeName(id)
 
     const eventServer = new EventSocketServer(pipeName, {
@@ -81,6 +84,7 @@ export class ReplManager implements vscode.Disposable {
           profileType: event.profileType ?? 'Thread',
           data: (event.data ?? {}) as Record<string, ProfileNode>,
         }),
+      onCoverage: (event) => this.coverage.ingest((event.data ?? {}) as CoverageData),
       onJuliaEvent: (event) => this.cliBridge?.handleJuliaEvent(event),
       onInvalid: (line) => this.output.appendLine(`${name} sent invalid JSON: ${line}`),
       onUnknown: (event) => this.output.appendLine(`${name} sent unknown event: ${JSON.stringify(event)}`),
@@ -92,6 +96,7 @@ export class ReplManager implements vscode.Disposable {
       name,
       pipeName,
       eventServer,
+      coverage,
       terminal: undefined as unknown as vscode.Terminal,
     }
 
@@ -102,6 +107,7 @@ export class ReplManager implements vscode.Disposable {
     const bootstrap = vscode.Uri.joinPath(this.context.extensionUri, 'julia', 'julia_runtime.jl').fsPath
     const shellArgs = [
       ...juliaArgsFromConfig(),
+      ...(coverage ? ['--code-coverage=user'] : []),
       '-i',
       bootstrap,
       pipeName,
@@ -109,11 +115,18 @@ export class ReplManager implements vscode.Disposable {
       name,
     ]
 
+    // Tell the runtime which files to report coverage for, so it doesn't serialize the hundreds
+    // of instrumented dependency files (only workspace files matter to the display).
+    const env = coverage
+      ? { JULIA_VSCODE_COVERAGE_ROOTS: (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath).join('\n') }
+      : undefined
+
     session.terminal = vscode.window.createTerminal({
       name,
       shellPath: executablePath,
       shellArgs,
       cwd,
+      env,
       isTransient: true,
     })
 
@@ -182,9 +195,40 @@ export class ReplManager implements vscode.Disposable {
     await this.executeText(editor.document.getText(), editor.document.fileName, editor.document.uri, 0, 0, false)
   }
 
-  private async executeRange(editor: vscode.TextEditor, range: vscode.Range, softscope: boolean) {
+  // Start a REPL instrumented for coverage (--code-coverage=user). Required before @coverage works.
+  async startReplWithCoverage() {
+    return this.startRepl(false, workspaceCwd(), true)
+  }
+
+  async executeFileWithCoverage() {
+    const editor = vscode.window.activeTextEditor
+    if (!editor) {
+      vscode.window.showWarningMessage('No active editor.')
+      return
+    }
+    await this.executeText(editor.document.getText(), editor.document.fileName, editor.document.uri, 0, 0, false, true)
+  }
+
+  async executeCodeWithCoverage() {
+    const editor = vscode.window.activeTextEditor
+    if (!editor) {
+      vscode.window.showWarningMessage('No active editor.')
+      return
+    }
+    const selections = editor.selections.filter((selection) => !selection.isEmpty)
+    if (selections.length > 0) {
+      for (const selection of selections) {
+        await this.executeRange(editor, new vscode.Range(selection.start, selection.end), true, true)
+      }
+      return
+    }
+    const line = editor.document.lineAt(editor.selection.active.line)
+    await this.executeRange(editor, line.range, true, true)
+  }
+
+  private async executeRange(editor: vscode.TextEditor, range: vscode.Range, softscope: boolean, coverage = false) {
     const code = editor.document.getText(range)
-    await this.executeText(code, editor.document.fileName, editor.document.uri, range.start.line, range.start.character, softscope)
+    await this.executeText(code, editor.document.fileName, editor.document.uri, range.start.line, range.start.character, softscope, coverage)
   }
 
   private async executeOffsetRange(editor: vscode.TextEditor, range: OffsetRange, softscope: boolean) {
@@ -197,15 +241,18 @@ export class ReplManager implements vscode.Disposable {
     uri: vscode.Uri,
     line: number,
     column: number,
-    softscope: boolean
+    softscope: boolean,
+    coverage = false
   ) {
-    const session = this.getActiveTerminalSession() ?? await this.startRepl(true, this.cwdForExecutedFile(uri))
+    const session = this.getActiveTerminalSession() ?? await this.startRepl(true, this.cwdForExecutedFile(uri), coverage)
     if (!session) {
       vscode.window.showWarningMessage('Start a Julia REPL first.')
       return
     }
     session.terminal.show(true)
-    this.sendTerminalCommand(session.terminal, buildEvalCommand(code, filename, line, column, softscope))
+    const command = buildEvalCommand(code, filename, line, column, softscope)
+    // `@coverage` wraps the eval CALL (not the source text) so line attribution stays correct.
+    this.sendTerminalCommand(session.terminal, coverage ? `@coverage ${command}` : command)
   }
 
   private sendTerminalCommand(terminal: vscode.Terminal, command: string) {

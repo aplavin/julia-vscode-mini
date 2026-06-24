@@ -22,6 +22,12 @@ function juliaAvailable() {
   return spawnSync('julia', ['--version'], { stdio: 'ignore' }).status === 0
 }
 
+// In-memory coverage gathering (jl_write_coverage_data) requires Julia >= 1.11.
+function juliaSupportsCoverage() {
+  const r = spawnSync('julia', ['--startup-file=no', '-e', 'print(VERSION >= v"1.11")'], { encoding: 'utf8' })
+  return r.status === 0 && r.stdout.trim() === 'true'
+}
+
 // One real pipeline: real EventSocketServer + real CliBridge + a real Julia REPL process
 // (driven over its stdin) + the real `bin/julia-vscode` shell client. No mocks anywhere.
 // The only thing this can't reproduce outside VS Code is the pty/bracketed-paste input path
@@ -141,4 +147,75 @@ test('end-to-end: CLI -> extension -> real Julia REPL', { skip: juliaAvailable()
       try { fs.rmSync(empty, { recursive: true, force: true }) } catch { /* ignore */ }
     }
   })
+})
+
+// Real pipeline for coverage: a Julia REPL started with --code-coverage=user, driven over stdin,
+// publishing per-line coverage back through the real EventSocketServer. Only the VS Code-native
+// rendering (TestController gutter) can't run headlessly; the wire data is asserted here.
+test('end-to-end: @coverage publishes per-line workspace coverage', {
+  skip: !juliaAvailable() ? 'julia not on PATH' : (!juliaSupportsCoverage() ? 'coverage requires Julia 1.11+' : false),
+}, async (t) => {
+  const workspace = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'jlvsc-cov-')))
+  const src = path.join(workspace, 'CovSrc.jl')
+  // foo: line 3 = `return x*2` (positive branch), line 5 = `return -x` (else branch).
+  fs.writeFileSync(src, 'function foo(x)\n    if x > 0\n        return x * 2\n    else\n        return -x\n    end\nend\n')
+  const id = `cov-${process.pid}`
+  const pipeName = generatePipeName(id)
+  try { fs.unlinkSync(pipeName) } catch { /* not present */ }
+
+  let resolveConnected
+  let resolveCoverage
+  const connected = new Promise((res) => { resolveConnected = res })
+  const coverage = new Promise((res) => { resolveCoverage = res })
+
+  const events = new EventSocketServer(pipeName, {
+    onConnected: () => resolveConnected(),
+    onWarning: () => {},
+    onCoverage: (event) => resolveCoverage(event.data),
+  })
+  await events.listen()
+
+  let childStderr = ''
+  const child = spawn('julia', ['--startup-file=no', '--code-coverage=user', '-i', RUNTIME, pipeName, id, 'cov'], {
+    cwd: workspace,
+    env: { ...process.env, JULIA_VSCODE_COVERAGE_ROOTS: workspace },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  child.stdout.on('data', () => {})
+  child.stderr.on('data', (d) => { childStderr += d.toString() })
+
+  const timers = []
+  t.after(async () => {
+    timers.forEach(clearTimeout)
+    events.dispose()
+    try { child.stdin.destroy() } catch { /* ignore */ }
+    if (child.exitCode === null && child.signalCode === null) {
+      await new Promise((resolve) => {
+        child.once('exit', resolve)
+        try { child.kill('SIGKILL') } catch { resolve() }
+        setTimeout(resolve, 3000).unref?.()
+      })
+    }
+    try { fs.rmSync(workspace, { recursive: true, force: true }) } catch { /* ignore */ }
+  })
+
+  const deadline = (ms, what) => new Promise((_, rej) => {
+    const tm = setTimeout(() => rej(new Error(`${what} timed out.\nstderr:\n${childStderr}`)), ms)
+    timers.push(tm)
+  })
+
+  await Promise.race([connected, deadline(120000, 'connect (coverage instrumentation is slow)')])
+
+  child.stdin.write(`include(${JSON.stringify(src)})\n`)
+  timers.push(setTimeout(() => child.stdin.write('@coverage foo(5)\n'), 2000))
+
+  const data = await Promise.race([coverage, deadline(120000, 'coverage event')])
+
+  const key = Object.keys(data).find((k) => k.endsWith('CovSrc.jl'))
+  assert.ok(key, `coverage reported for the workspace source file (got ${Object.keys(data)})`)
+  const counts = new Map(data[key]) // [line, count] pairs
+  assert.equal(counts.get(3), 1, 'line 3 (return x*2) ran for foo(5)')
+  assert.equal(counts.get(5), 0, 'line 5 (else return -x) did not run for foo(5)')
+  // Only workspace files are reported (deps were filtered out by JULIA_VSCODE_COVERAGE_ROOTS).
+  assert.ok(Object.keys(data).every((k) => k.startsWith(workspace)), 'only workspace files reported')
 })
